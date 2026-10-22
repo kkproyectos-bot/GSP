@@ -1,0 +1,1104 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GSP – Control de personal</title>
+<script src="https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mammoth@1.8.0/mammoth.browser.min.js"></script>
+<style>
+  :root{ --bg:#f4f6f8; --card:#ffffff; --ink:#1d2733; --muted:#5d6b7a; --line:#c9d1da; --accent:#1f4e79; --accent-ink:#ffffff; }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 "Segoe UI",Roboto,Arial,sans-serif}
+  header{background:var(--accent);color:var(--accent-ink);padding:18px 24px}
+  header h1{margin:0;font-size:20px}
+  header p{margin:4px 0 0;opacity:.85;font-size:13px}
+  main{max-width:1400px;margin:0 auto;padding:20px 16px 40px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px;margin-bottom:18px}
+  h2{font-size:16px;margin:0 0 12px;color:var(--accent)}
+  h3{font-size:14px;margin:18px 0 8px}
+  label{font-size:13px;color:var(--muted);display:block;margin-bottom:4px}
+  .row{display:flex;flex-wrap:wrap;gap:14px;align-items:flex-end}
+  select,input[type=date],input[type=text]{padding:7px 9px;border:1px solid var(--line);border-radius:6px;font:inherit;background:#fff}
+  button{background:var(--accent);color:var(--accent-ink);border:0;border-radius:6px;padding:9px 16px;font:inherit;cursor:pointer}
+  button.sec{background:#e6ecf2;color:var(--ink)}
+  button.mini{padding:3px 9px;font-size:12px}
+  .hint{font-size:12px;color:var(--muted);margin-top:6px}
+  .msg{font-size:13px;margin-top:8px}
+  .msg.err{color:#b00020}
+  .resumen{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px}
+  .kpi{border-radius:8px;padding:12px;border:1px solid var(--line);background:#f8fafc}
+  .kpi .n{font-size:24px;font-weight:600}
+  .kpi .t{font-size:13px;color:var(--muted)}
+  .tabla-wrap{overflow-x:auto}
+  table{border-collapse:collapse;width:100%;font-size:12.5px}
+  th,td{border:1px solid var(--line);padding:4px 6px;text-align:center;white-space:nowrap}
+  th{background:#eef2f6;position:sticky;top:0}
+  td.nom{text-align:left}
+  td.obs{text-align:left;white-space:normal;min-width:260px;font-size:12px}
+  td.no{color:#b00020;font-weight:600}
+  .leyenda{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:center;font-size:12px;color:var(--muted);margin:0 0 10px}
+  .leyenda label{display:flex;align-items:center;gap:6px;margin:0;font-size:12px;cursor:pointer}
+  .leyenda input[type=color]{width:22px;height:18px;padding:0;border:1px solid var(--line);border-radius:3px;background:none;cursor:pointer}
+  .zona{border:2px dashed var(--line);border-radius:10px;padding:18px;text-align:center;color:var(--muted);margin:10px 0}
+  .zona.sobre{border-color:var(--accent);background:#eef4fa}
+  .hidden{display:none}
+  .fuentes li{font-size:13px;margin:2px 0}
+  #tablaNomina th.c0,#tablaNomina td.c0{position:sticky;left:0;z-index:1;box-shadow:1px 0 0 var(--line)}
+  #tablaNomina td.c0{background:#fff}
+  #tablaNomina th.c0{z-index:3}
+  .tag{display:inline-block;border-radius:10px;padding:0 7px;font-size:11px;background:#E4D7F5;margin-left:4px}
+  .columnas{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;font-size:12px;color:var(--muted);margin:0 0 10px;border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:#f8fafc}
+  .chip{border:1px solid var(--accent);background:var(--accent);color:#fff;border-radius:14px;padding:3px 10px;font-size:12px;cursor:pointer}
+  .chip.off{background:#fff;color:var(--muted);border-color:var(--line);text-decoration:line-through}
+  textarea{width:100%;border:1px solid var(--line);border-radius:6px;padding:10px;resize:vertical}
+  textarea.lectura{font:15px/1.6 "Times New Roman",serif;text-align:justify}
+  .doc-bloque{border:1px solid var(--line);border-radius:8px;padding:12px;margin-top:12px}
+  .doc-cab{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:6px;flex-wrap:wrap}
+  .doc-cab .tipo{display:flex;align-items:center;gap:8px;margin-left:auto}
+</style>
+<style id="estiloCols"></style>
+</head>
+<body>
+<header>
+  <h1>GSP – Control de personal</h1>
+  <p>Cargá los ZIP (o carpetas) de Habilitaciones y de Personal; la página arma la nómina y la compara con el Excel de control de vencimientos. · <b>Versión 3 (22/10/2026)</b></p>
+</header>
+<main>
+
+<section class="card">
+  <h2>1. Datos</h2>
+  <div class="row" style="margin-bottom:12px">
+    <div><label for="corte">Fecha de corte</label><input type="date" id="corte"></div>
+    <div><label for="vigencia">Vigencia de habilitación y reincidencia (meses)</label><input type="text" id="vigencia" value="12" size="4"></div>
+    <div><label for="aviso">Aviso previo al vencimiento (meses)</label><input type="text" id="aviso" value="1" size="4"></div>
+    <div><label for="empresa">Empresa (para los textos)</label><input type="text" id="empresa" size="22" value="GSP"></div>
+    <div><label for="mesesPrueba">Período de prueba (meses)</label><input type="text" id="mesesPrueba" value="6" size="4"></div>
+    <div><label for="baseAnt">Antigüedad calculada según</label>
+      <select id="baseAnt"><option value="emp">Ingreso a la empresa (recibo)</option><option value="obj">Ingreso al objetivo</option></select></div>
+  </div>
+  <div class="zona" id="zona">
+    Arrastrá acá los ZIP o las carpetas (Habilitaciones y Personal). Se pueden cargar de a uno; se van sumando.<br>
+    <div class="row" style="justify-content:center;margin-top:10px">
+      <div><button id="btnZip" class="sec">Elegir ZIP</button></div>
+      <div><button id="btnCarpeta" class="sec">Elegir carpeta</button></div>
+      <div><button id="btnExcel" class="sec">Elegir Excel de control</button></div>
+      <div><button id="btnLimpiar" class="sec">Empezar de nuevo</button></div>
+    </div>
+    <input type="file" id="inZip" accept=".zip,application/zip" multiple class="hidden">
+    <input type="file" id="inCarpeta" webkitdirectory directory multiple class="hidden">
+    <input type="file" id="inExcel" accept=".xlsx,.xls" class="hidden">
+  </div>
+  <div class="hint">Se leen: credenciales (PDF), recibos de sueldo (legajo, CUIL e ingreso a la empresa), certificados de reincidencia y los documentos de cada carpeta por persona. Las actas de altas y renovaciones son escaneos: en esta versión se usan transcriptas dentro de la página (sección 9) para controlar el Excel. El Excel de control se reconoce solo si viene dentro del ZIP. Los archivos se leen en tu computadora; no se envían a ningún servidor.</div>
+  <div id="msg" class="msg"></div>
+  <ul id="fuentes" class="fuentes"></ul>
+</section>
+
+<section class="card hidden" id="secResumen">
+  <h2>2. Resumen</h2>
+  <div class="resumen" id="kpis"></div>
+</section>
+
+<section class="card hidden" id="secNomina">
+  <h2>3. Nómina</h2>
+  <div class="leyenda">
+    <label><input type="color" data-color="sinAlerta"> Sin alerta</label>
+    <label><input type="color" data-color="amarillo"> Vence dentro del aviso previo</label>
+    <label><input type="color" data-color="rojo"> Vencido a la fecha de corte</label>
+    <label><input type="color" data-color="tramite"> Credencial anterior al último trámite (en trámite)</label>
+    <label><input type="color" data-color="difCtl"> Distinto al Excel de control</label>
+    <button class="sec mini" id="btnResetColores">Restablecer colores</button>
+  </div>
+  <div class="row" style="margin:0 0 10px">
+    <div><label for="fNom">Mostrar</label>
+      <select id="fNom">
+        <option value="">Todos</option>
+        <option value="ven">Habilitación vencida</option>
+        <option value="pv">Habilitación por vencer</option>
+        <option value="tram">Credencial en trámite</option>
+        <option value="rnr">Reincidencia vencida, por vencer o sin certificado</option>
+        <option value="dif">Con diferencias con el Excel de control</option>
+        <option value="nuevo">No figuran en el Excel de control</option>
+        <option value="falta">Con documentos faltantes</option>
+      </select></div>
+    <div><label>En el informe (PDF y Excel) incluir</label>
+      <label style="display:inline;margin-right:12px"><input type="radio" name="alcance" value="completa" checked> Tabla completa</label>
+      <label style="display:inline"><input type="radio" name="alcance" value="filtrada"> Sólo lo filtrado</label></div>
+  </div>
+  <div class="columnas" id="panelCols"><b>Ocultar / mostrar columnas (sólo en pantalla):</b></div>
+  <div id="cuentaNom" class="hint" style="margin:0 0 8px"></div>
+  <div class="tabla-wrap"><table id="tablaNomina"></table></div>
+</section>
+
+<section class="card hidden" id="secHab">
+  <h2>4. Situación de las habilitaciones</h2>
+  <div class="resumen" id="kpisHab"></div>
+  <h3>Lectura para el informe</h3>
+  <div class="hint" style="margin:0 0 8px">El texto se puede editar antes de descargar. Se vuelve a redactar si cambian los datos.</div>
+  <textarea id="textoHab" class="lectura" rows="9"></textarea>
+</section>
+
+<section class="card hidden" id="secAnt">
+  <h2>5. Antigüedad del personal</h2>
+  <div class="leyenda">
+    <label><input type="color" data-color="ant0"> Menos de un año</label>
+    <label><input type="color" data-color="ant1"> Entre uno y dos años</label>
+    <label><input type="color" data-color="ant2"> Más de dos años</label>
+    <button class="sec mini" id="btnResetAnt">Restablecer colores</button>
+  </div>
+  <div class="row" style="margin:0 0 10px">
+    <div><label for="fAnt">Mostrar</label>
+      <select id="fAnt"><option value="">Todos</option><option value="ant0">Menos de un año</option><option value="ant1">Entre uno y dos años</option><option value="ant2">Más de dos años</option><option value="sd">Sin fecha de ingreso</option></select></div>
+    <div><label>En el informe (PDF y Excel) incluir</label>
+      <label style="display:inline;margin-right:12px"><input type="radio" name="alcanceAnt" value="completa" checked> Tabla completa</label>
+      <label style="display:inline"><input type="radio" name="alcanceAnt" value="filtrada"> Sólo lo filtrado</label></div>
+  </div>
+  <div id="cuentaAnt" class="hint" style="margin:0 0 8px"></div>
+  <div class="tabla-wrap"><table id="tablaAnt"></table></div>
+  <h3>Lectura para el informe</h3>
+  <textarea id="textoAnt" class="lectura" rows="4"></textarea>
+</section>
+
+<section class="card hidden" id="secCob">
+  <h2>6. Cobertura de ART y seguro de vida</h2>
+  <label for="archivoDoc">Cargá el certificado de la ART y la constancia del seguro de vida (.pdf o .docx)</label>
+  <input type="file" id="archivoDoc" multiple accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+  <div class="hint">La póliza de seguro de vida que viene en las carpetas del personal ("GSP - Nómina Actualizada al 25.04") no se usa: hay que cargar la constancia vigente.</div>
+  <div id="msgDoc" class="msg"></div>
+  <div id="listaDocs"></div>
+  <div id="avisoCob" class="msg"></div>
+  <div class="resumen" id="kpisCob" style="margin-top:12px"></div>
+  <div class="row" style="margin:16px 0 10px">
+    <div><label for="fArt">ART</label>
+      <select id="fArt"><option value="">Todos</option><option value="si">Con ART</option><option value="no">Sin ART</option></select></div>
+    <div><label for="fSv">Seguro de vida</label>
+      <select id="fSv"><option value="">Todos</option><option value="si">Con seguro de vida</option><option value="no">Sin seguro de vida</option></select></div>
+    <div><label>En el informe (PDF y Excel) incluir</label>
+      <label style="display:inline;margin-right:12px"><input type="radio" name="alcanceCob" value="completa" checked> Tabla completa</label>
+      <label style="display:inline"><input type="radio" name="alcanceCob" value="filtrada"> Sólo lo filtrado</label></div>
+  </div>
+  <div id="cuentaCob" class="hint" style="margin:0 0 8px"></div>
+  <div class="tabla-wrap"><table id="tablaCob"></table></div>
+  <h3>Lectura para el informe</h3>
+  <div class="hint" style="margin:0 0 8px">Los porcentajes se calculan siempre sobre toda la nómina, aunque haya filtros.</div>
+  <textarea id="textoCob" class="lectura" rows="6"></textarea>
+</section>
+
+<section class="card hidden" id="secDif">
+  <h2>7. Diferencias con el Excel de control</h2>
+  <div class="hint" style="margin:0 0 8px">Datos del Excel que no coinciden con lo que dicen las actas o las credenciales.</div>
+  <div class="tabla-wrap"><table id="tablaDif"></table></div>
+</section>
+
+<section class="card hidden" id="secBajas">
+  <h2>8. Bajas</h2>
+  <div class="hint" style="margin:0 0 8px">Carpetas de la carpeta BAJAS de personas que no figuran en el Excel de control. Si alguien figura en el control y tiene carpeta en BAJAS, queda en la nómina con una observación.</div>
+  <div class="tabla-wrap"><table id="tablaBajas"></table></div>
+</section>
+
+<section class="card hidden" id="secActas">
+  <h2>9. Actas de altas y renovaciones (transcriptas)</h2>
+  <div class="hint" style="margin:0 0 8px">Transcripción de las actas presentadas (fecha del sello de entrada). La habilitación vence a los meses de vigencia desde esa fecha. Las actas incluyen personal de toda la empresa; sólo se usan las filas de las personas de la nómina.</div>
+  <div id="avisoActas" class="msg"></div>
+  <details><summary>Ver la transcripción</summary><div class="tabla-wrap"><table id="tablaActas"></table></div></details>
+</section>
+
+<section class="card hidden" id="secOtros">
+  <h2>10. Archivos sin asignar</h2>
+  <div id="otros"></div>
+</section>
+
+<section class="card hidden" id="secDescargas">
+  <h2>11. Descargas</h2>
+  <div class="row">
+    <div><button id="btnPdf">Descargar PDF</button></div>
+    <div><button id="btnXlsx">Descargar Excel</button></div>
+  </div>
+  <div id="msgDesc" class="msg"></div>
+</section>
+</main>
+
+<script>
+/* ===================== Actas transcriptas (versión 1) =====================
+   fecha = sello de entrada; tipo A = alta, R = renovación; DNI tal como figura en el acta */
+const ACTAS = [
+ {archivo:'ALTAS 10-07-2025.jpeg', fecha:'10/07/2025', filas:[['SILVA FERNANDO HORACIO','35951052','A'],['TORRES SIXTO RAMIRO ALEJO','40570468','A'],['ZORLOZANO RUBEN DARIO','24259019','A']]},
+ {archivo:'ALTAS 16-01-2025 1.jpeg', fecha:'16/01/2025', filas:[['BENTO JORGE ERNESTO','38616917','R'],['CALANDRON JUAN PABLO','27170946','R'],['DAVILA RICARDO NESTOR','14059627','R'],['IBARGUREN MANUEL ALBERTO','30192109','R'],['MUIÑO FEDERICO NAHUEL','41222701','R'],['SANCHEZ GABRIEL ALEJANDRO','39192499','R']]},
+ {archivo:'ALTAS 16-01-2025 2.jpeg', fecha:'16/01/2025', filas:[['TISERA RAMON OMAR','23393862','A'],['AGUIRRE JUAN MANUEL','25650404','A'],['TRUEBA GASTON RAUL','28747318','A'],['VICO JORGE ALBERTO','32596328','A'],['TORRES MARTIN ENRIQUE','41549928','A'],['LEDESMA FEDERICO MANUEL','34694990','A'],['CARDOZO BENITEZ ALBERTO MIGUEL','95812018','A']]},
+ {archivo:'ALTAS VIGILADORES 28-10-2025.pdf', fecha:'28/10/2025', filas:[['AGUIRRE FEDERICO FACUNDO','36980469','R'],['CACERES DIEGO JAVIER','27605121','R'],['CARABAJAL MARTIN OMAR','22628998','R'],['CASTILLO ANALIA','29995445','R'],['CASTILLO BRIAN','38095656','R'],['MONTAÑO MIGUEL ALBERTO','28379456','R'],['MOREIRA JONATHAN ALEJANDRO','42934792','R'],['PAREDES GUIDO LEANDRO','42037186','R'],['RODRIGUEZ JORGE GUSTAVO','14881513','R'],['TALAMONA MATIAS EMMANUEL','29555140','R'],['TESONE SEBASTIAN RODRIGO','35139976','R']]},
+ {archivo:'Altas 05-08-2025.pdf', fecha:'05/08/2025', filas:[['HENDEL BRIAN URIEL','37677349','A'],['GALARZA ALEXANDER FABRICIO','43099294','A'],['FERNANDEZ RAMON OSCAR','20093635','A']]},
+ {archivo:'Altas 10-12-2025.jpeg', fecha:'10/12/2025', filas:[['BASCUÑAN NICOLAS DIEGO MARTIN','35873310','R'],['BROGGI FERNANDO ADRIAN','20493835','R'],['CORDOBA GUADALUPE DEL MILAGRO','43964843','R'],['LISERRA LOPEZ FEDERICO LEONEL','37446723','R'],['LUJAN NEHUEN IÑAKI','45291980','R'],['MORALES ABEL EMMANUEL','36040906','R'],['ORELLANO NAHUEL FRANCISCO','42265570','R'],['PEREZ RENZO LEONEL','38607827','R'],['SANCHEZ JUAN AGUSTIN','37889690','R'],['TERREROS DAVID MARTIN','44969414','R']]},
+ {archivo:'Altas 19-06-2025.jpeg', fecha:'19/06/2025', filas:[['CATANIA GERARDO OSCAR','20313288','A'],['TEVEZ RAINIERI DANIEL DARIO','38523373','A'],['VILLALBA JOSE ALEJANDRO','31745750','A'],['RAMIREZ CRISTIAN ANDRES','25824766','A'],['MAZA MONICA PATRICIA','25644921','A'],['VILLALBA ANGELES ANAHI','37912530','A'],['ESQUIVEL JORGE FIDEL','25889741','A']]},
+ {archivo:'Altas 22-08-2025.jpeg', fecha:'22/08/2025', filas:[['PAREDES RODRIGO ALEJANDRO','42802785','A'],['VALLEJOS PABLO NICOLAS','43186109','A'],['GONZALEZ CRISTIAN GABRIEL','38676074','A'],['OJEDA JUAN MATIAS','33938685','A'],['SANCHEZ JONATHAN ALBERTO','36619431','A'],['SATTO CRISTIAN JAVIER','33328829','A'],['TELLO AGUSTIN SANTIAGO','27756342','A']]},
+ {archivo:'Altas 30-04-2025.jpeg', fecha:'30/04/2025', filas:[['CONTRERAS MIGUEL ANGEL','29442487','R'],['COULON CRISTIAN CAMILO','25086557','R'],['GIACCHINO CARLOS ARIEL','30073019','R'],['GOMEZ NATALIA VERONICA','31418457','R'],['LOPEZ CARZOLA MIGUEL RUBEN','22877233','R'],['OJEDA NICOLAS PATRICIO','37887589','R'],['SANCHEZ DIEGO GASTON','30468250','R'],['SCAVUZZO GUILLERMO DAMIAN','33658472','R'],['TORREJON ALAN BORIS','29151567','R'],['VALIENTE YAGO','42875764','R']]},
+ {archivo:'Altas 7-10-2025.jpeg', fecha:'07/10/2025', filas:[['ALBORNOZ BRIAN EZEQUIEL','38934199','A'],['BENITEZ JOAQUIN EZEQUIEL','43205943','A'],['ENCINA RUBEN HORACIO','27280643','A'],['FERREIRA FERNANDEZ CRISTHIAN ANTONIO','94236601','A']]},
+ {archivo:'Altas Vigiladores 17-12-2024.jpeg', fecha:'17/12/2024', filas:[['TERREROS DAVID MARTIN','44969414','A'],['SILVA ESTEBAN EZEQUIEL','36154590','A'],['SANCHEZ JUAN AGUSTIN','37889690','A'],['REPETTO FABIAN ANDRES','29393397','A'],['MORALES ABEL EMMANUEL','36040906','A'],['PEREZ RENZO LEONEL','38607827','A'],['MOYANO MARIA SOLEDAD','37363429','A'],['LUJAN NEHUEN IÑAKI','45291980','A'],['LISERRA LOPEZ FEDERICO LEONEL','37446723','A'],['GODOY CRISTIAN HERNAN','33032202','A'],['BROGGI FERNANDO ADRIAN','20493835','A'],['BASCUÑAN NICOLAS DIEGO MARTIN','35873310','A'],['CORDOBA GUADALUPE DEL MILAGRO','43964843','A'],['CISNEROS IGNACIO ANDRES','41387570','A'],['BARUA IVANA YANET','47482912','A'],['AGUIRRE BRAIAN EMANUEL','41097183','A'],['ORELLANO NAHUEL FRANCISCO','42265570','A']]},
+ {archivo:'Altas vigiladores 29-10-2024.jpeg', fecha:'29/10/2024', filas:[['AGUIRRE FABIAN ANDRES','31154218','A'],['AGUIRRE FEDERICO FACUNDO','36980469','A'],['CACERES DIEGO JAVIER','27605121','A'],['CARABAJAL MARTIN OMAR','22628998','A'],['CARRERA JOAQUIN AMANUEL','35873712','A'],['CASTILLO ANALIA','29995445','A'],['CASTILLO BRIAN ALEJANDRO','38095656','A'],['CENTURION ADRIAN OMAR','31202666','A'],['DIAZ CRISTIAN EDDUAR','46262310','A'],['FERNANDEZ CASTEX PATRICIO NICOLAS','30892936','A'],['MONTAÑO MIGUEL ALBERTO','28379456','A'],['MOREIRA JONATHAN ALEJANDRO','42934792','A'],['PAREDES GUIDO LEANDRO ANTONIO','42037186','A'],['RAMIREZ BENJAMIN','42535664','A'],['RODRIGUEZ JORGE GUSTAVO','14881513','A'],['TALAMONA MATIAS EMMANUEL','29555140','A'],['TESONE SEBASTIAN RODRIGO','35139976','A'],['VALCARCEL NICOLAS MARTIN','37379644','A']]},
+ {archivo:'Renovaciones 3-12-2025.pdf', fecha:'03/12/2025', filas:[['BERGUES ROSENDO FRANCO DAMIAN','38823222','R'],['CORRARELLE ALEJANDRA NOEMI','36542439','R'],['ECHEVERRIA FRANCO JAVIER','44560954','R'],['MARTI SEBASTIAN RAUL ALFREDO','28640539','R'],['PUENTES MAXIMILIANO DANIEL','32208640','R'],['ROSS LEANDRO MIGUEL','29922564','R'],['TISERA CRISTIAN LEON','39985381','R'],['VILLALBA GREGORIO EZEQUIEL','37671470','R'],['BURCEZ PAULO MIGUEL','30753642','R'],['VILLALBA HUGO GABRIEL','29268251','R'],['YAPPERT DARIO NATANAEL','41333810','R']]},
+ {archivo:'aLTAS 24-09-2025.jpeg', fecha:'24/09/2025', filas:[['BALLESTEROS LUCIANO OSCAR','42540456','A'],['CERDA IGNACIO','35828533','A'],['CORREA ALEJANDRO LUIS','31060290','A'],['GONZALEZ NAHUEL IVAN','40255773','A'],['TESONE MATIAS DAMIAN','37840088','A']]},
+ {archivo:'Altas 11-05-2026.pdf', fecha:'11/05/2026', filas:[['FUMEAU GUILLE IGNACIO URIEL','43800037','R'],['GALINDO ROBERTO NICOLAS','31342550','R'],['OSORES MARCOS NAHUEL','42900495','R'],['RIOS MARCELO OSVALDO','23298006','R'],['SGHERRI JUAN MARTIN','37882038','R'],['TOLEDO JULIO EZEQUIEL','4409153','R'],['GALARZA ALEXANDER FABRICIO','43099294','A']]},
+ {archivo:'Altas 12-01-2026.pdf', fecha:'12/01/2026', filas:[['AGUIRRE JUAN MANUEL','25650404','R'],['BENTO JORGE ERNESTO','38616917','R'],['CALANDRON JUAN PABLO','27170946','R'],['CARDOZO BENITEZ ALBERTO MIGUEL','95812018','R'],['DAVILA RICARDO NESTOR','14059627','R'],['IBARGUREN MANUEL ALBERTO','30192109','R'],['MUIÑO FEDERICO NAHUEL','41222701','R'],['LEDESMA FEDERICO MANUEL','34694990','R'],['TISERA RAMON OMAR','23393862','R'],['TRUEBA GASTON RAUL','28747318','R'],['SANCHEZ GABRIEL ALEJANDRO','39192499','R']]},
+ {archivo:'Altas 14-01-2026.pdf', fecha:'14/01/2026', filas:[['AGUIRRE TOMAS EDUARDO','43105986','A'],['CABALLERO RODRIGO MAXIMILIANO','35418027','A'],['FOURNIER KATHERINE','44300556','A'],['SANDOVAL DANIEL ALBERTO','23630006','A'],['TORALES FERNANDO DAVID','40545155','A']]},
+ {archivo:'Altas 20-07-2026.pdf', fecha:'20/07/2026', filas:[['MUÑOZ AGUSTINA MARIANELA ITATI','39999703','A'],['MURIEL SCIUTTO AGUSTIN','46209500','A'],['LEZCANO JUAN BACILIO','44011964','R']]},
+ {archivo:'Altas 24-01-2026.pdf', fecha:'23/01/2026', filas:[['BRAVO ASTUDILLO GONZALO GABRIEL','41079359','A'],['CAMORIANO TOMAS OSCAR','43401301','A'],['DI NANNO GERMAN ROBERTO','35287409','A'],['GALARZA KEVIN LEANDRO','46019376','A'],['GIMENEZ MAXIMILIANO SIXTO HUGO','32755116','A'],['GONZALEZ MARIO ALEJANDRO','23484973','A'],['LUJAN ENZO NICOLAS','42429518','A'],['MIRANDA MARCELO HORACIO','27197429','A'],['VERON MANSILLA KEVIN MARTIN','45819954','A']]},
+ {archivo:'Altas 5-01-2026.pdf', fecha:'05/01/2026', filas:[['CARINI GUSTAVO LEONARDO','24938411','R'],['SOTELO ALEJANDRO MARTIN','27410951','R'],['SALES LUIS FEDERICO','35399558','R'],['TUCCI GUSTAVO MARCELO','18530304','R'],['FERRAUR MARIO ALBERTO','28569040','R'],['FERREIRO FERNANDO LUIS','14740700','R'],['PANA HUGO CESAR','31361674','R']]},
+ {archivo:'Altas vig 28-4-26.pdf', fecha:'28/04/2026', filas:[['GIACCHINO CARLOS ARIEL','30073019','R'],['GOMEZ NATALIA VERONICA','31418457','R'],['LOPEZ CAZORLA MIGUEL RUBEN','22877233','R'],['OJEDA NICOLAS PATRICIO','37887589','R'],['SANCHEZ DIEGO GASTON','30468250','R'],['VALIENTE YAGO','42875764','R']]},
+ {archivo:'Altas vig 6-4-26.pdf', fecha:'06/04/2026', filas:[['BAUSELA AGUSTIN','41783303','R'],['OBREGON FABRICIO LEANDRO','41607113','R'],['SANCHEZ BRAIAN ALBERTO','39480801','A']]},
+ {archivo:'Altas vig 8-4-26.pdf', fecha:'08/04/2026', filas:[['FERNANDEZ CESAR AGUSTIN','44186696','A'],['FLENCHE LEANDRO RAUL','31116611','A'],['PADROS FELIPE CIPRIANO','45499667','A'],['MENKE RUBEN HORACIO','17978204','A'],['VILLALBA GUSTAVO ALBERTO','29563078','A']]},
+ {archivo:'Altas y Renovaciones 10-09-2026.pdf', fecha:'10/09/2026', filas:[['CABRERA BENJAMIN','44667209','A'],['ALBA ANDRES NICOLAS','38553911','A'],['MEDINA JUAN JOSE','36110510','A'],['LOPEZ DIAZ MIGUEL LEANDRO','34604759','R']]},
+ {archivo:'Altas y Renovaciones 12-02-2026.pdf', fecha:'12/02/2026', filas:[['AMARILLO JONATAN OSCAR','33615865','A'],['CALANDRON LUCAS VALENTINO','45570328','A'],['GARRIDO ANTONIO RUBEN','26660242','A'],['LOBO EZEQUIEL MATIAS','44167564','A'],['DELGADO CARLOS NESTOR','17556553','R'],['FERNANDEZ GABRIEL HERNAN','36389990','R'],['FERNANDEZ MARCELO ALEXIS','40033053','R'],['BARRIONUEVO CRISTIAN PABLO','28431090','R'],['SOSA AGUSTIN JAVIER','40064061','R'],['JIMENEZ JUAN MANUEL','40422587','R'],['DELGADO MIGUEL ANGEL','41569032','R']]},
+ {archivo:'Nuevas altas 16-09-2026.pdf', fecha:'16/09/2026', filas:[['AGUILAR ALBERTO LUCAS','42429996','A'],['CISNEROS OSCAR EMILIANO','37457785','A'],['GUERRA JUAN PABLO','43591673','A'],['MONTENEGRO ALFREDO NICOLAS','41166925','A'],['PAEZ IVO NAHUEL','40064042','A']]},
+ {archivo:'Renovaciones 16-09-2026.pdf', fecha:'16/09/2026', filas:[['CORREA ALEJANDRO LUIS','31060290','R'],['GONZALEZ NAHUEL IVAN','40255773','R']]},
+ {archivo:'Renovaciones 18-06-2026.pdf', fecha:'18/06/2026', filas:[['ALBERICI MARIO ADRIAN','21508640','R'],['ANTICHI CRISTIAN JAVIER','37579735','R'],['CATANIA GERARDO OSCAR','20313288','R'],['IFRAN DANIEL RODOLFO','28833786','R'],['LUGO SEBASTIAN ALBERTO','24869085','R'],['MAZA MONICA PATRICIA','25644921','R'],['MOREIRA HECTOR ALFREDO','31772412','R'],['ONGARO LUCAS LEONEL','38043381','R'],['RAMIREZ CRISTIAN','25824766','R'],['SCIALABBA REINALDO DANIEL','27512698','R'],['TEVEZ RAINERI DANIEL DARIO','38523373','R'],['VILLALBA ANGELES ANAHI','37912530','R'],['VILLAREAL PAZ NESTOR','34638455','R']]},
+ {archivo:'Renovaciones 18-08-2026.pdf', fecha:'18/08/2026', filas:[['JEREZ MARCOS EUGENIO','29306422','R'],['OJEDA JUAN MATIAS','33938685','R'],['SANCHEZ JONATHAN ALBERTO','36619431','R'],['SATTO CRISTIAN JAVIER','33328829','R'],['PAREDES RODRIGO ALEJANDRO','42802785','R']]},
+ {archivo:'Renovaciones 5-10-2026.pdf', fecha:'05/10/2026', filas:[['BENITEZ JOAQUIN EZEQUIEL','43205943','R'],['ENCINA RUBEN HORACIO','27280643','R'],['MANCEBO PAULO CESAR','22323645','R']]},
+ {archivo:'Renovaciones 5-8-2026.pdf', fecha:'05/08/2026', filas:[['FERNANDEZ RAMON OSCAR','20093635','R'],['HENDEL BRIAN URIEL','36677349','R']]}
+];
+
+/* N.º de comprobante de cada presentación (código alfanumérico cuando lo tiene; si no, el n.º de comprobante de pago).
+   "filas" = comprobante distinto para algunas personas del acta (por DNI). */
+const COMPROBANTES = {
+ 'ALTAS 10-07-2025.jpeg':{comp:'207285243'}, 'ALTAS VIGILADORES 28-10-2025.pdf':{comp:'73245767'}, 'Altas 05-08-2025.pdf':{comp:'210523962'},
+ 'Altas 10-12-2025.jpeg':{comp:'75434979'}, 'Altas 19-06-2025.jpeg':{comp:'204643067'}, 'Altas Vigiladores 17-12-2024.jpeg':{comp:'58357890'},
+ 'Altas vigiladores 29-10-2024.jpeg':{comp:'56066675'}, 'Renovaciones 3-12-2025.pdf':{comp:'75082012'},
+ 'Altas 11-05-2026.pdf':{comp:'82745617', filas:{'43099294':'82745744'}}, 'Altas 12-01-2026.pdf':{comp:'232489399'}, 'Altas 14-01-2026.pdf':{comp:'233137607'},
+ 'Altas 20-07-2026.pdf':{comp:'LR7HCEV937', filas:{'44011964':'LR7HCEA286'}}, 'Altas 24-01-2026.pdf':{comp:'77610142'}, 'Altas 5-01-2026.pdf':{comp:'LR13ECY103'},
+ 'Altas vig 28-4-26.pdf':{comp:'82072442'}, 'Altas vig 6-4-26.pdf':{comp:'80915664'}, 'Altas vig 8-4-26.pdf':{comp:'LR47HDR250'},
+ 'Altas y Renovaciones 10-09-2026.pdf':{comp:'88837718', filas:{'34604759':'88837573'}},
+ 'Altas y Renovaciones 12-02-2026.pdf':{comp:'78555234', filas:{'17556553':'78554989','36389990':'78554989','40033053':'78554989','28431090':'78554989','40064061':'78554989','40422587':'78554989','41569032':'78554989'}},
+ 'Nuevas altas 16-09-2026.pdf':{comp:'89140397'}, 'Renovaciones 16-09-2026.pdf':{comp:'89140503'}, 'Renovaciones 18-06-2026.pdf':{comp:'84599238'},
+ 'Renovaciones 18-08-2026.pdf':{comp:'LR8EG8T417'}, 'Renovaciones 5-10-2026.pdf':{comp:'LRA2Dfw616'}, 'Renovaciones 5-8-2026.pdf':{comp:'LR85HsW789'}
+};
+function comprobanteDe(archivo,dni){ const c=COMPROBANTES[archivo]; if(!c) return ''; return (c.filas&&c.filas[dni])||c.comp||''; }
+
+/* ===================== Configuración ===================== */
+const COLORES_DEF={ sinAlerta:'FFFFFF', amarillo:'FFF2A0', rojo:'FF8B8B', tramite:'DDEBF7', difCtl:'FCD5B4', ant0:'FFFFFF', ant1:'FFF2A0', ant2:'A9D18E' };
+// Situación de la habilitación para los indicadores (mismas categorías que en Costa Esmeralda)
+const ESTADOS_HAB={ vig:'Habilitación vigente con credencial', sas:'Vigente por comprobante de presentación', ven:'Habilitación vencida',
+  sij:'Sin habilitación (período de prueba)', snj:'Sin habilitación (fuera del período de prueba)', otr:'Sin datos suficientes' };
+const ORDEN_HAB=['vig','sas','ven','sij','snj','otr'];
+const TRAMOS=[ {key:'ant0', nombre:'Menos de un año'}, {key:'ant1', nombre:'Entre uno y dos años'}, {key:'ant2', nombre:'Más de dos años'} ];
+const COLORES=Object.assign({},COLORES_DEF);
+const DOCS=[['dni','DNI'],['cuil','CUIL'],['preoc','PREOCUP.'],['psico','PSICOT.'],['dj','DJ'],['curso','CURSO']];
+const COLS=[ // [clave, encabezado]
+ ['nombre','APELLIDO Y NOMBRE'],['dni','DNI'],['legajo','LEGAJO'],['ingEmp','INGRESO EMPRESA'],['ingObj','INGRESO OBJETIVO'],['ant','ANTIGÜEDAD'],
+ ['credNro','N.º CREDENCIAL'],['credVenc','VENCE CREDENCIAL'],['tramite','ÚLTIMO TRÁMITE (ACTA)'],['comp','N.º COMPROBANTE PRESENTACIÓN'],['habVenc','VENCE HABILITACIÓN'],['estado','ESTADO'],
+ ['rnrEmi','REINCIDENCIA (EMISIÓN)'],['rnrVenc','VENCE REINCIDENCIA'],['recibo','ÚLTIMO RECIBO'],
+ ...DOCS.map(([k,t])=>['doc_'+k,t]), ['obs','OBSERVACIONES'] ];
+const CATEGORIAS=['credenciales','altas presentaciones','datos personales','dni','antecedentes','reincidencias','altas afip','empresa','vehiculos','equipos de comunicacion','equipos de comunicaci u00f3n','2024','2025','2026','habilitaciones'];
+
+/* ===================== Utilidades ===================== */
+const $=id=>document.getElementById(id);
+function sinAcentos(s){return String(s).normalize('NFD').replace(/[̀-ͯ]/g,'');}
+function arreglarNombre(s){ return String(s).replace(/#U([0-9a-fA-F]{4})/g,(m,h)=>String.fromCharCode(parseInt(h,16))); }
+function norm(s){return sinAcentos(arreglarNombre(String(s||'')).toLowerCase()).replace(/[^a-z0-9]+/g,' ').trim();}
+function parsearFecha(txt){
+  if(txt==null||txt==='') return null;
+  if(txt instanceof Date) return isNaN(txt)?null:new Date(txt.getFullYear(),txt.getMonth(),txt.getDate());
+  const s=String(txt).trim();
+  let m=s.match(/^(\d{4})-(\d{2})-(\d{2})/); if(m) return new Date(+m[1],+m[2]-1,+m[3]);
+  m=s.match(/(?:^|\D)(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4}|\d{2})(?!\d)/);
+  if(m){ let a=+m[3]; if(a<100) a+=2000; const d=new Date(a,+m[2]-1,+m[1]); return (isNaN(d)||d.getMonth()!==+m[2]-1)?null:d; }
+  if(/^\d{5}(\.\d+)?$/.test(s)){ const d=new Date(1899,11,30); d.setDate(d.getDate()+Math.floor(+s)); return d; }
+  return null;
+}
+const MESES={enero:1,febrero:2,marzo:3,abril:4,mayo:5,junio:6,julio:7,agosto:8,septiembre:9,setiembre:9,octubre:10,noviembre:11,diciembre:12};
+function fechaEnLetras(t){
+  const re=/(\d{1,2})\s+de\s+([a-z]+)\s+(?:de|del)\s+(\d{4})/g; const s=sinAcentos(String(t)).toLowerCase(); let m,ult=null;
+  while((m=re.exec(s))){ if(MESES[m[2]]) ult=new Date(+m[3],MESES[m[2]]-1,+m[1]); }
+  return ult;
+}
+function fmtFecha(d){ if(!d) return ''; return String(d.getDate()).padStart(2,'0')+'/'+String(d.getMonth()+1).padStart(2,'0')+'/'+d.getFullYear(); }
+function isoFecha(d){ return d? d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0') : ''; }
+function sumarMeses(d,n){ const r=new Date(d.getFullYear(),d.getMonth()+n,1); const ult=new Date(r.getFullYear(),r.getMonth()+1,0).getDate(); r.setDate(Math.min(d.getDate(),ult)); return r; }
+function mesesCompletos(desde,hasta){ let m=(hasta.getFullYear()-desde.getFullYear())*12+(hasta.getMonth()-desde.getMonth()); if(hasta.getDate()<desde.getDate()) m--; return m; }
+function fmtAntiguedad(m){ if(m<0) return ''; const a=Math.floor(m/12), r=m%12; return `${a} año${a===1?'':'s'} y ${r} mes${r===1?'':'es'}`; }
+function mismaFecha(a,b){ return a&&b&&a.getTime()===b.getTime(); }
+function fmtPct(x){ return x.toFixed(2).replace('.',','); }
+function pct(n,total){ return total? (n*100/total):0; }
+function nombrePropio(s){ return String(s).toLowerCase().replace(/(^|[\s,.-])([a-záéíóúñü])/g,(m,a,b)=>a+b.toUpperCase()); }
+function listaNombres(arr){ return arr.length===1?arr[0]:arr.slice(0,-1).join(', ')+' y '+arr[arr.length-1]; }
+function unirFrases(arr){ return arr.length<2?arr.join(''):arr.slice(0,-1).join(', ')+' y '+arr[arr.length-1]; }
+const soloDni=s=>{ const d=String(s||'').replace(/\D/g,''); return d?String(parseInt(d,10)):''; };
+function hexDe(clave){ const h=clave?COLORES[clave]:null; return (!h||h.toUpperCase()==='FFFFFF')?null:h.toUpperCase(); }
+function semaforo(venc, corte, aviso){ if(!venc) return null; if(venc<corte) return 'rojo'; if(venc<=sumarMeses(corte,aviso)) return 'amarillo'; return 'sinAlerta'; }
+function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function distancia(a,b){ const d=Array.from({length:a.length+1},(_,i)=>[i].concat(Array(b.length).fill(0)));
+  for(let j=1;j<=b.length;j++) d[0][j]=j;
+  for(let i=1;i<=a.length;i++) for(let j=1;j<=b.length;j++) d[i][j]=Math.min(d[i-1][j]+1,d[i][j-1]+1,d[i-1][j-1]+(a[i-1]===b[j-1]?0:1));
+  return d[a.length][b.length]; }
+
+/* ---------- Comparación de nombres ---------- */
+const VACIAS=new Set(['de','del','la','las','los','y','dni','rnr','credencial','certificado','alta','afip','antecedentes','copia','pdf','jpeg','jpg','png','vigilador']);
+function palabras(s){ return norm(s).split(' ').filter(w=>w.length>1 && !VACIAS.has(w) && !/^\d+$/.test(w)); }
+function palIgual(a,b){ return a===b || (a.length>=4&&b.length>=4&&Math.abs(a.length-b.length)<=1&&distancia(a,b)<=1); }
+function coincidencias(A,B){ const usados=new Set(); let m=0; A.forEach(w=>{ const j=B.findIndex((x,i)=>!usados.has(i)&&palIgual(w,x)); if(j>=0){usados.add(j);m++;} }); return m; }
+// Puntaje entre dos nombres: 0 si no son la misma persona
+function puntaje(a,b){
+  const A=palabras(a), B=palabras(b); if(!A.length||!B.length) return 0;
+  const [S,L]=A.length<=B.length?[A,B]:[B,A];
+  const m=coincidencias(S,L);
+  if(m<2) return 0;
+  if(m<S.length){
+    // se tolera una palabra distinta sólo con nombres de 3 o más palabras y apellidos parecidos (p. ej. MOREL / MURIEL)
+    if(!(S.length>=3 && m>=S.length-1)) return 0;
+    if(!(palIgual(A[0],B[0]) || distancia(A[0],B[0])<=2 || coincidencias([A[0]],B) || coincidencias([B[0]],A))) return 0;
+  }
+  return m+(m===S.length?0.5:0);
+}
+function mejor(nombre, candidatos, getNombre){
+  let best=null, bs=0, empate=false;
+  candidatos.forEach(c=>{ const s=puntaje(nombre,getNombre(c)); if(s>bs){bs=s;best=c;empate=false;} else if(s>0&&s===bs&&c!==best) empate=true; });
+  return empate?null:best;
+}
+
+/* ===================== Clasificación de archivos ===================== */
+const RE_RECIBO=/(\d{2})-(\d{7,8})-(\d)\s*-\s*(\d+)\s*-\s*(.+?)\s*-\s*(\d{4})-(\d{2})/;
+function clasificarNombre(ruta){
+  const partes=ruta.split('/'); const nombre=arreglarNombre(partes[partes.length-1]);
+  const n=' '+norm(nombre.replace(/\.[^.]+$/,''))+' ', dir=norm(partes.slice(0,-1).join(' '));
+  const ext=(nombre.match(/\.([^.]+)$/)||['',''])[1].toLowerCase();
+  if(/^(xlsx|xls|xlsm)$/.test(ext)) return 'excel';
+  if(/nomina actualizada/.test(n)) return 'seguro';
+  if(/documento( original firmado)?\s*-/i.test(nombre) && RE_RECIBO.test(nombre)) return 'recibo';
+  if(/altas presentaciones/.test(dir) || (/^ (altas?|renovaciones|nuevas altas) /.test(n) && !/vehicul|equipo|afip|comunicac/.test(dir+n))) return 'acta';
+  if(/(^| )credenciales( |$)/.test(dir) || / credencial/.test(n)) return 'cred';
+  if(/ rnr | reincid|certificado reincidencia/.test(n) || / reincidencias$/.test(dir)) return 'rnr';
+  if(/ antecedente/.test(n)) return 'antec';
+  if(/ psico| psicolaboral/.test(n)) return 'psico';
+  if(/ p o | preo| preocupacional| torax/.test(n) || /preocupacional/.test(dir)) return 'preoc';
+  if(/ dj | ddjj | declaracion jurada/.test(n)) return 'dj';
+  if(/ curso| diploma| modulo| capacitacion/.test(n)) return 'curso';
+  if(/ cuil/.test(n)) return 'cuil';
+  if(/ dni /.test(n) || / dni$/.test(dir)) return 'dni';
+  if(/ cv | curriculum/.test(n)) return 'cv';
+  if(/ licencia/.test(n)) return 'lic';
+  if(/ alta | constancia /.test(n) || /altas afip/.test(dir)) return 'alta';
+  if(/ certificado| cert /.test(n)) return 'certif';   // se confirma leyendo el texto
+  return 'otro';
+}
+function clasificarTexto(t){
+  const s=sinAcentos(t||'').toLowerCase();
+  if(!s.trim()) return null;
+  if(/recibo de remuneraciones/.test(s)) return 'recibo';
+  if(/nro\.? de credencial|d\.p\.g\.s\.p/.test(s)) return 'cred';
+  if(/22\.117|reincidencia/.test(s)) return 'rnr';
+  if(/simplificacion registral|constancia de cuil/.test(s)) return 'alta';
+  return null;
+}
+function extraerCred(t){
+  const o={}; const s=String(t).replace(/[ \t]+/g,' ');
+  const lineas=s.split('\n').map(x=>x.trim()).filter(Boolean);
+  const d=s.match(/DNI\s*:?\s*(\d{1,2}\.?\d{3}\.?\d{3})/i); if(d) o.dni=soloDni(d[1]);
+  o.nombre=(lineas[0]||'').replace(/\bDNI\b.*$/,'').trim();
+  const nro=lineas.find(x=>/^\d{5,7}$/.test(x)); if(nro) o.nro=nro;
+  const f=lineas.find(x=>/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(x)); if(f) o.venc=parsearFecha(f);
+  if(!o.nro||!o.venc){ const m=s.replace(/\s+/g,' ').match(/(\d{5,7})\s+(\d{1,2}\/\d{1,2}\/\d{4})/); if(m){ o.nro=o.nro||m[1]; o.venc=o.venc||parsearFecha(m[2]); } }
+  const c=s.match(/VIGILADOR\s+(CON|SIN)\s+ARMA/i); if(c) o.cat=c[0].toUpperCase();
+  return o;
+}
+function extraerRnr(t){
+  const o={}; const s=String(t);
+  const d=s.match(/D\.?\s?N\.?\s?I\.?\s*:?\s*(\d{1,2}\.?\d{3}\.?\d{3})/i); if(d) o.dni=soloDni(d[1]);
+  o.emision=fechaEnLetras(s);
+  return o;
+}
+function extraerRecibo(nombreArchivo, texto){
+  const m=arreglarNombre(nombreArchivo).match(RE_RECIBO); if(!m) return {};
+  const o={cuil:`${m[1]}-${m[2]}-${m[3]}`, dni:soloDni(m[2]), legajo:m[4], nombre:m[5].trim(), periodo:m[6]+'-'+m[7]};
+  if(texto){ const s=String(texto).replace(/\s+/g,' ');
+    const f=s.match(new RegExp('\\b'+o.legajo+'\\s+(\\d{2}\\/\\d{2}\\/\\d{4})')); if(f) o.ingreso=parsearFecha(f[1]);
+    const s2=String(texto).replace(/[ \t]+/g,' ');
+    const n=s2.match(new RegExp("(?:^|\\n)\\s*([A-ZÁÉÍÓÚÑÜ][A-ZÁÉÍÓÚÑÜa-záéíóúñü' ]*,[A-ZÁÉÍÓÚÑÜa-záéíóúñü' ]+?)\\s+"+o.legajo+'\\s+\\d{2}\\/')); if(n) o.nombreTxt=n[1].replace(',',' ').replace(/\s+/g,' ').trim(); }
+  return o;
+}
+
+/* ===================== Estado ===================== */
+let archivos=[];       // {ruta, nombre, carpeta, baja, tipo, datos, leer}
+let carpetasVacias=new Map(); // nombre -> baja
+let controlFilas=null, controlNombre='';
+let ultimo=null;
+const vistos=new Set();
+
+function carpetaDe(ruta){
+  const segs=ruta.replace(/\\/g,'/').split('/').filter(Boolean);
+  const dirs=segs.slice(0,-1).map(s=>arreglarNombre(s).trim());
+  let idx=-1, baja=false;
+  dirs.forEach((d,i)=>{ const n=norm(d); if(n==='personal'||n==='bajas'){ idx=i; } });
+  if(idx>=0){ baja=norm(dirs[idx])==='bajas'; const c=dirs[idx+1]; if(c && !CATEGORIAS.includes(norm(c))) return {carpeta:c, baja, sub:dirs.slice(idx+2).join('/')}; return null; }
+  return null;
+}
+
+/* ===================== Lectura ===================== */
+pdfjsLib && (pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js');
+async function textoDePdf(bytes){
+  try{
+    const pdf=await pdfjsLib.getDocument({data:bytes}).promise;
+    const pg=await pdf.getPage(1); const tc=await pg.getTextContent();
+    let t=''; tc.items.forEach(it=>{ t+=it.str+(it.hasEOL?'\n':' '); });
+    pdf.destroy(); return t;
+  }catch(e){ return ''; }
+}
+
+async function procesarEntradas(entradas, origen){
+  const msg=$('msg'); msg.className='msg';
+  const nuevos=[];
+  for(const e of entradas){
+    const ruta=e.ruta.replace(/\\/g,'/');
+    if(/(^|\/)(__MACOSX|\.DS_Store|desktop\.ini|Thumbs\.db)(\/|$)/i.test(ruta)) continue;
+    if(e.dir){ const c=carpetaDe(ruta+'/x'); if(c && !c.sub) { if(!carpetasVacias.has(c.carpeta)) carpetasVacias.set(c.carpeta,c.baja); } continue; }
+    if(vistos.has(ruta)) continue; vistos.add(ruta);
+    const c=carpetaDe(ruta);
+    const nombre=arreglarNombre(ruta.split('/').pop());
+    nuevos.push({ruta, nombre, carpeta:c?c.carpeta:null, baja:c?c.baja:false, sub:c?c.sub:'', tipo:clasificarNombre(ruta), datos:{}, leer:e.leer});
+  }
+  // Recibos: se leen sólo el último de cada CUIL (para la fecha de ingreso)
+  const ultRecibo={};
+  nuevos.filter(a=>a.tipo==='recibo').forEach(a=>{ a.datos=extraerRecibo(a.nombre); const k=a.datos.dni; if(!ultRecibo[k]||a.datos.periodo>ultRecibo[k].datos.periodo) ultRecibo[k]=a; });
+  const aLeer=nuevos.filter(a=>/\.pdf$/i.test(a.nombre) && (['cred','rnr','certif','otro','alta','antec'].includes(a.tipo) || Object.values(ultRecibo).includes(a)));
+  let i=0;
+  for(const a of nuevos){
+    if(a.tipo==='excel'){ try{ const b=await a.leer(); if(leerControl(b,a.nombre)) a.tipo='control'; }catch(err){} continue; }
+    if(!aLeer.includes(a)) continue;
+    i++; if(i%10===0){ msg.textContent=`Leyendo documentos de ${origen}… ${i} de ${aLeer.length}`; await new Promise(r=>setTimeout(r,0)); }
+    const t=await textoDePdf(await a.leer());
+    if(a.tipo==='recibo'){ a.datos=extraerRecibo(a.nombre,t); continue; }
+    let tt=clasificarTexto(t);
+    if(tt==='recibo') tt='otro';   // recibos con otro nombre de archivo: no se usan
+    if(tt) a.tipo=tt; else if(a.tipo==='certif') a.tipo='curso';
+    if(a.tipo==='cred') a.datos=extraerCred(t);
+    else if(a.tipo==='rnr') a.datos=extraerRnr(t);
+    else if(a.tipo==='alta'){ const c=String(t).match(/(\d{2})\s*-?\s*(\d{7,8})\s*-?\s*(\d)/); if(c) a.datos={dni:soloDni(c[2])}; }
+    else if(a.tipo==='antec'){ const d=String(t).match(/D\.?\s?N\.?\s?I\.?\s*:?\s*(\d{1,2}\.?\d{3}\.?\d{3})/i); if(d) a.datos={dni:soloDni(d[1])}; }
+  }
+  archivos=archivos.concat(nuevos);
+  agregarFuente(`${origen}: ${nuevos.length} archivos`);
+  msg.textContent='';
+  recalcular();
+}
+function agregarFuente(t){ const li=document.createElement('li'); li.textContent=t; $('fuentes').appendChild(li); }
+
+/* ---------- Excel de control ---------- */
+function leerControl(bytes,nombre){
+  if(typeof XLSX==='undefined') throw new Error('no se cargó la librería de Excel (revisá la conexión a internet).');
+  const wb=XLSX.read(bytes,{type:'array',cellDates:true});
+  for(const hn of wb.SheetNames){
+    const filas=XLSX.utils.sheet_to_json(wb.Sheets[hn],{header:1,raw:true,defval:''});
+    for(let r=0;r<Math.min(filas.length,15);r++){
+      const enc=filas[r].map(c=>norm(c));
+      const iNom=enc.findIndex(c=>/apellido/.test(c)); if(iNom<0) continue;
+      const col=re=>enc.findIndex(c=>re.test(c));
+      const iV=col(/vencimiento/), iC=col(/^credencial/), iA=col(/acta/), iO=col(/ingreso/);
+      const out=[];
+      for(let k=r+1;k<filas.length;k++){ const f=filas[k]; const n=String(f[iNom]||'').trim(); if(!n) continue;
+        out.push({nombre:n, venc:parsearFecha(f[iV]), cred:String(f[iC]==null?'':f[iC]).trim().replace(/\.0+$/,''), acta:String(f[iA]||'').trim(), ingObj:parsearFecha(f[iO])}); }
+      if(out.length){ controlFilas=out; controlNombre=nombre; agregarFuente(`Excel de control: ${nombre} (${out.length} personas)`); return true; }
+    }
+  }
+  return false;
+}
+
+/* ===================== Armado de la nómina ===================== */
+function opciones(){
+  const corte=parsearFecha($('corte').value)||new Date(new Date().getFullYear(),new Date().getMonth(),new Date().getDate());
+  const vig=parseInt($('vigencia').value,10)||12, aviso=parseInt($('aviso').value,10)||0;
+  return {corte, vig, aviso, empresa:$('empresa').value.trim()||'la empresa', mesesPrueba:parseInt($('mesesPrueba').value,10)||6, baseAnt:$('baseAnt').value};
+}
+function nuevaPersona(nombre, origen){ return {nombre, nombreCtl:'', ctl:null, enControl:false, dni:'', carpetas:[], arch:[], creds:[], rnrs:[], recibos:[], actas:[], docs:new Set(), obs:[], baja:false, origen}; }
+
+function calcular(){
+  const o=opciones();
+  const personas=[];
+  // 1. Excel de control
+  (controlFilas||[]).forEach(f=>{ const p=nuevaPersona(f.nombre,'control'); p.nombreCtl=f.nombre; p.ctl=f; p.enControl=true; personas.push(p); });
+  // 2. Carpetas por persona
+  const carpetas=new Map();
+  archivos.forEach(a=>{ if(a.carpeta){ const k=(a.baja?'B|':'A|')+a.carpeta; if(!carpetas.has(k)) carpetas.set(k,{nombre:a.carpeta,baja:a.baja,arch:[]}); carpetas.get(k).arch.push(a); } });
+  carpetasVacias.forEach((baja,nombre)=>{ const k=(baja?'B|':'A|')+nombre; if(!carpetas.has(k)) carpetas.set(k,{nombre,baja,arch:[]}); });
+  const dniMayoria=c=>{ const cuenta={}; c.arch.forEach(a=>{ if(a.datos&&a.datos.dni&&['recibo','rnr','cred','antec','alta'].includes(a.tipo)){ cuenta[a.datos.dni]=(cuenta[a.datos.dni]||0)+1; } });
+    const k=Object.keys(cuenta).sort((x,y)=>cuenta[y]-cuenta[x])[0]; return k||''; };
+  const listaC=[...carpetas.values()].sort((a,b)=>a.baja-b.baja);
+  listaC.forEach(c=>{
+    c.dni=dniMayoria(c);
+    let p=c.dni?personas.find(x=>x.dni===c.dni):null;
+    if(!p){ p=mejor(c.nombre, personas.filter(x=>!x.dni||!c.dni||x.dni===c.dni), x=>x.nombreCtl||x.nombre);
+      if(!p && c.dni){ const r=c.arch.find(a=>a.tipo==='recibo'&&a.datos.dni===c.dni); if(r) p=mejor(r.datos.nombre, personas.filter(x=>!x.dni), x=>x.nombreCtl||x.nombre); } }
+    if(!p){ p=nuevaPersona(c.nombre, c.baja?'baja':'carpeta'); p.baja=c.baja; personas.push(p); }
+    if(!p.dni && c.dni) p.dni=c.dni;
+    p.carpetas.push(c); c.persona=p;
+  });
+  const porDni=d=>d?personas.find(p=>p.dni===d):null;
+  // 3. Asignar archivos
+  const sinAsignar=[];
+  archivos.forEach(a=>{
+    if(['excel','control','seguro','acta'].includes(a.tipo)) return;
+    const d=a.datos&&a.datos.dni;
+    let p=null;
+    if(a.tipo==='recibo'||a.tipo==='cred'||a.tipo==='rnr'){ p=porDni(d); }
+    if(!p && a.carpeta){ const c=carpetas.get((a.baja?'B|':'A|')+a.carpeta); p=c&&c.persona;
+      if(p && d && p.dni && d!==p.dni && ['recibo','cred','rnr'].includes(a.tipo)){ a.mal=true; const q=porDni(d); if(q){ p=q; } else p=null; } }
+    if(!p && a.tipo==='cred' && a.datos.nombre){ p=mejor(a.datos.nombre, personas.filter(x=>!x.dni), x=>x.nombreCtl||x.nombre); if(p && d) p.dni=d; }
+    if(!p && !a.carpeta){ // archivos sueltos (Datos personales): por el nombre del archivo
+      p=porDni(d);
+      if(!p){ const ws=palabras(a.nombre.replace(/\.[^.]+$/,'').replace(/\(\d+\)/g,''));
+        if(ws.length){ const cand=personas.filter(x=>{ const pn=palabras(x.nombreCtl||x.nombre), pd=palabras(x.nombre); return ws.every(w=>pn.some(v=>palIgual(w,v))||pd.some(v=>palIgual(w,v))); });
+          if(cand.length===1) p=cand[0]; } } }
+    if(!p){ sinAsignar.push(a); return; }
+    if(a.mal){ const c=a.carpeta; p.obs.push(`Un ${a.tipo==='recibo'?'recibo':a.tipo==='cred'?'credencial':'certificado'} suyo estaba en la carpeta "${c}" (${a.nombre})`); }
+    p.arch.push(a);
+    if(a.tipo==='recibo' && a.datos.dni) p.recibos.push(a.datos);
+    else if(a.tipo==='cred' && a.datos.venc) p.creds.push(a.datos);
+    else if(a.tipo==='rnr' && a.datos.emision) p.rnrs.push(a.datos);
+    if(['dni','cuil','preoc','psico','dj','curso'].includes(a.tipo)) p.docs.add(a.tipo);
+  });
+  // 4. Actas
+  const actasUsadas=[];
+  ACTAS.forEach(ac=>{ const fecha=parsearFecha(ac.fecha);
+    ac.filas.forEach(([nom,dni,tipo])=>{
+      const d=soloDni(dni); let p=porDni(d), porNombre=false;
+      if(!p){ p=mejor(nom, personas, x=>x.nombre+' '+(x.nombreCtl||'')); if(p){ porNombre=true; } }
+      if(p && porNombre && p.dni && p.dni!==d && distancia(p.dni,d)>2) p=null;   // otro DNI: sólo se acepta si parece un error de tipeo
+      actasUsadas.push({archivo:ac.archivo, fecha, nom, dni:d, tipo, persona:p, comp:comprobanteDe(ac.archivo,d)});
+      if(!p) return;
+      if(!p.dni) p.dni=d;
+      p.actas.push({fecha, tipo, archivo:ac.archivo, dni:d, nom, comp:comprobanteDe(ac.archivo,d)});
+      if(p.dni && d!==p.dni) p.obs.push(`En el acta del ${ac.fecha} figura con DNI ${d}`);
+    }); });
+  // 5. Cálculos por persona
+  personas.forEach(p=>calcularPersona(p,o));
+  const activos=personas.filter(p=>p.enControl || !p.baja).sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
+  const bajas=personas.filter(p=>!p.enControl && p.baja).sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
+  // Actas del ZIP que no están transcriptas
+  const conocidas=new Set(ACTAS.map(a=>norm(a.archivo)));
+  const actasNuevas=archivos.filter(a=>a.tipo==='acta' && !conocidas.has(norm(a.nombre)));
+  const ind=indicadores(activos);
+  return {o, activos, bajas, sinAsignar, actasUsadas, actasNuevas, ind};
+}
+
+function calcularPersona(p,o){
+  // nombre completo: credencial > recibo > acta > control
+  const cred=p.creds.slice().sort((a,b)=>b.venc-a.venc)[0]||null;
+  const rec=p.recibos.slice().sort((a,b)=>a.periodo<b.periodo?1:-1)[0]||null;
+  const recIng=p.recibos.find(r=>r.ingreso)||null;
+  const acta=p.actas.slice().sort((a,b)=>b.fecha-a.fecha)[0]||null;
+  const rnr=p.rnrs.slice().sort((a,b)=>b.emision-a.emision)[0]||null;
+  // nombre completo (apellido primero): credencial > recibo > acta > control > carpeta
+  if(cred&&cred.nombre) p.nombre=cred.nombre.toUpperCase();
+  else if(recIng&&recIng.nombreTxt) p.nombre=recIng.nombreTxt.toUpperCase();
+  else if(acta&&acta.nom) p.nombre=acta.nom;
+  else if(p.enControl) p.nombre=p.nombreCtl.toUpperCase();
+  p.cred=cred; p.acta=acta; p.rnr=rnr;
+  p.legajo=rec?rec.legajo:''; p.ultRecibo=rec?rec.periodo.split('-').reverse().join('/'):'';
+  p.ingEmp=recIng?recIng.ingreso:null; p.ingObj=p.ctl?p.ctl.ingObj:null;
+  p.ant=p.ingEmp?fmtAntiguedad(mesesCompletos(p.ingEmp,o.corte)):'';
+  p.actaVenc=acta?sumarMeses(acta.fecha,o.vig):null;
+  p.credVenc=cred?cred.venc:null;
+  // La habilitación vence a los meses de vigencia desde la última presentación; la credencial sólo se usa si no hay acta
+  p.habVenc=p.actaVenc||p.credVenc||null;
+  p.enTramite=!!(p.actaVenc && (!p.credVenc || p.credVenc<p.actaVenc));
+  const s=semaforo(p.habVenc,o.corte,o.aviso);
+  p.estado = !p.habVenc?'sd': s==='rojo'?'ven': s==='amarillo'?'pv':'vig';
+  p.estadoTxt={sd:'Sin datos',ven:'Vencida',pv:'Por vencer',vig:'Vigente'}[p.estado]+(p.enTramite&&p.estado!=='ven'?' – credencial en trámite':'');
+  // Situación para los indicadores (como en Costa: vigente si vence en la fecha de corte o después)
+  const fIngPrueba=p.ingEmp||p.ingObj;
+  if(p.habVenc) p.sit= p.habVenc<o.corte?'ven': (p.enTramite?'sas':'vig');
+  else if(fIngPrueba) p.sit= fIngPrueba>=sumarMeses(o.corte,-o.mesesPrueba)?'sij':'snj';
+  else p.sit='otr';
+  // Antigüedad
+  p.fechaAnt= o.baseAnt==='obj' ? (p.ingObj||p.ingEmp) : (p.ingEmp||p.ingObj);
+  p.meses=null; p.tramo='sd';
+  if(p.fechaAnt){ p.meses=Math.max(0,mesesCompletos(p.fechaAnt,o.corte)); p.tramo= p.meses<12?'ant0': p.meses<24?'ant1':'ant2'; }
+  p.antiguedad= p.meses==null?'Sin dato':fmtAntiguedad(p.meses);
+  p.rnrVenc=rnr?sumarMeses(rnr.emision,o.vig):null;
+  p.rnrSem=semaforo(p.rnrVenc,o.corte,o.aviso);
+  p.faltan=DOCS.filter(([k])=>!p.docs.has(k)).map(([,t])=>t);
+  // Diferencias con el control
+  p.difs=[]; p.difCols=new Set();
+  if(p.ctl){
+    const ref=p.actaVenc||p.credVenc;
+    if(p.ctl.venc && ref && !mismaFecha(p.ctl.venc,ref)){
+      p.difs.push({dato:'Vencimiento de habilitación', ctl:fmtFecha(p.ctl.venc), doc:fmtFecha(ref), det:p.actaVenc?`Acta del ${fmtFecha(acta.fecha)} (${acta.archivo}) + ${o.vig} meses`:'Vencimiento de la credencial'});
+      p.difCols.add('habVenc'); }
+    if(p.ctl.venc && !ref) p.difs.push({dato:'Vencimiento de habilitación', ctl:fmtFecha(p.ctl.venc), doc:'', det:'No se encontró acta ni credencial'});
+    const cc=p.ctl.cred, esNum=/^\d{5,7}$/.test(cc);
+    if(esNum && p.creds.length && !p.creds.some(c=>c.nro===cc)){ p.difs.push({dato:'N.º de credencial', ctl:cc, doc:cred.nro, det:`Credencial vence ${fmtFecha(cred.venc)}`}); p.difCols.add('credNro'); }
+    if(esNum && !p.creds.length) p.difs.push({dato:'N.º de credencial', ctl:cc, doc:'', det:'No se encontró el PDF de la credencial'});
+    if(/pendiente/i.test(cc) && cred && (!p.actaVenc || cred.venc>=p.actaVenc)){ p.difs.push({dato:'N.º de credencial', ctl:'PENDIENTE', doc:cred.nro, det:`Ya hay credencial hasta ${fmtFecha(cred.venc)}`}); p.difCols.add('credNro'); }
+    if(/^si$/i.test(p.ctl.acta) && !acta) p.difs.push({dato:'Acta de presentación', ctl:'SI', doc:'', det:'No figura en las actas transcriptas'});
+    if(norm(p.nombreCtl)!==norm(p.nombre) && puntaje(p.nombreCtl,p.nombre)<Math.min(palabras(p.nombreCtl).length,palabras(p.nombre).length)) p.obs.unshift(`En el control figura como ${p.nombreCtl}`);
+  } else if(!p.baja) p.obs.unshift('NO FIGURA EN EL EXCEL DE CONTROL');
+  p.difs.forEach(d=>p.obs.push(`Control: ${d.dato.toLowerCase()} ${d.ctl||'—'}${d.doc?' (documentos: '+d.doc+')':''}${d.det?' – '+d.det:''}`));
+  if(p.enControl && p.carpetas.some(c=>c.baja)) p.obs.push('Tiene carpeta en BAJAS (se considera activo porque figura en el control)');
+  if(!p.carpetas.length && p.origen==='control') p.obs.push('Sin carpeta personal');
+  else if(p.carpetas.length && p.carpetas.every(c=>!c.arch.length)) p.obs.push('Carpeta personal vacía');
+  if(!rnr) p.obs.push('Sin certificado de reincidencia');
+  if(p.enTramite && p.cred) p.obs.push(`Credencial ${p.cred.nro} vence ${fmtFecha(p.credVenc)}; ${acta.tipo==='A'?'alta':'renovación'} presentada el ${fmtFecha(acta.fecha)}`);
+  else if(p.enTramite) p.obs.push(`Credencial pendiente; ${acta.tipo==='A'?'alta':'renovación'} presentada el ${fmtFecha(acta.fecha)}`);
+}
+
+/* ===================== Indicadores y redacción (como en Costa Esmeralda) ===================== */
+function indicadores(activos){
+  const conteo={}; ORDEN_HAB.forEach(k=>conteo[k]=0); activos.forEach(p=>conteo[p.sit]++);
+  const conteoAnt={ant0:0,ant1:0,ant2:0,sd:0}; activos.forEach(p=>conteoAnt[p.tramo]++);
+  return {conteo, conteoAnt, total:activos.length};
+}
+function redactarHab(res,o,activos){
+  const T=res.total, c=res.conteo, P=k=>fmtPct(pct(c[k],T));
+  const hab=c.vig+c.sas;
+  const p1=[`Al cierre del presente informe, considerando como fecha de corte el ${fmtFecha(o.corte)} correspondiente al período bajo análisis, se observa que el ${fmtPct(pct(hab,T))} % del personal de ${o.empresa} asignado al predio posee habilitación vigente.`];
+  if(c.sas){
+    p1.push(`De dicho total, el ${P('sas')} % de la nómina acredita su habilitación mediante el comprobante del trámite presentado ante la Dirección Provincial para la Gestión de la Seguridad Privada, atento a que actualmente no se están emitiendo nuevas credenciales; el mismo se considera válido por el término de un año contado desde la fecha de su presentación.`);
+  }
+  const p2=[];
+  if(c.sij){
+    const un=c.sij===1;
+    p2.push(`Por su parte, el ${P('sij')} % del personal aún no ha iniciado dicho trámite; no obstante, esta situación se encuentra debidamente justificada, toda vez que ${un?'el agente involucrado se halla':'los agentes involucrados se hallan'} dentro de los primeros ${o.mesesPrueba===6?'seis':o.mesesPrueba} meses de prestación de servicios, período de prueba durante el cual aún no corresponde su gestión.`);
+  }
+  if(c.snj) p2.push(`${p2.length?'Por otro lado':'Por su parte'}, el ${P('snj')} % del personal no cuenta con habilitación ni comprobante de trámite habiendo superado el período de prueba.`);
+  if(c.ven){
+    const noms=activos.filter(p=>p.sit==='ven').map(p=>nombrePropio(p.nombre)), un=noms.length===1;
+    p2.push(`${p2.length?'Además':'Por su parte'}, ${un?'el caso de':'los casos de'} ${listaNombres(noms)} ${un?'representa':'representan'} el ${P('ven')} % de la nómina, cuya habilitación se encuentra vencida a la fecha de corte.`);
+  }
+  if(c.otr) p2.push(`Se registra${c.otr===1?'':'n'} ${c.otr} caso${c.otr===1?'':'s'} (${P('otr')} %) sin clasificar por falta de documentación.`);
+  return [p1.join(' '), p2.join(' ')].filter(Boolean).join('\n\n');
+}
+function redactarAnt(res){
+  const T=res.total, c=res.conteoAnt;
+  const verbos={ant0:'registra una permanencia inferior a un año', ant1:'posee entre uno y dos años de antigüedad', ant2:'supera los dos años de permanencia en el servicio'};
+  const claves=['ant0','ant1','ant2'].filter(k=>c[k]);
+  if(!claves.length) return 'No se pudo calcular la antigüedad por falta de fechas de ingreso.';
+  const partes=claves.map((k,i)=>`el ${fmtPct(pct(c[k],T))} %${i===0?' de los GS':''}${i===claves.length-1&&claves.length>1?' restante':''} ${verbos[k]}`);
+  let t=`En tal sentido, ${unirFrases(partes)}.`;
+  if(c.sd) t+=` No se pudo calcular la antigüedad de ${c.sd} GS por falta de fecha de ingreso.`;
+  return t;
+}
+/* ---------- ART y seguro de vida (igual que en Costa Esmeralda) ---------- */
+function agruparLineas(items){
+  const filas=[];
+  items.filter(i=>i.str&&i.str.trim()).forEach(i=>{
+    const y=i.transform[5], x=i.transform[4];
+    let f=filas.find(f=>Math.abs(f.y-y)<3);
+    if(!f){ f={y,items:[]}; filas.push(f); }
+    f.items.push({x,s:i.str});
+  });
+  filas.sort((a,b)=>b.y-a.y);
+  return filas.map(f=>f.items.sort((a,b)=>a.x-b.x).map(i=>i.s).join(' ').replace(/\s+/g,' ').trim());
+}
+function extraerLista(lineas){
+  lineas=lineas.map(s=>String(s).trim()).filter(Boolean);
+  const re=/(?:^|\D)(2[0-7])\s*-?\s*(\d{7,8})\s*-?\s*(\d)(?!\d)\s*(.*)$/;
+  const lista=[], vistos=new Set();
+  for(let i=0;i<lineas.length;i++){
+    const m=lineas[i].match(re); if(!m) continue;
+    let nombre=m[4].replace(/^[\s\-–|]+/,'').trim();
+    if(!/[a-záéíóúñ]{2}/i.test(nombre)){ const sig=(lineas[i+1]||'').trim(); if(/[a-záéíóúñ]{2}/i.test(sig) && !re.test(sig)) nombre=sig; }
+    const cuil=`${m[1]}-${m[2].padStart(8,'0')}-${m[3]}`, dni=String(parseInt(m[2],10));
+    if(vistos.has(cuil)) continue; vistos.add(cuil);
+    lista.push({cuil,dni,nombre:nombre.toUpperCase()});
+  }
+  return lista;
+}
+function detectarTipoCob(lineas){
+  const t=sinAcentos(lineas.join(' ').toLowerCase());
+  if(/seguro (colectivo )?de vida|vida obligatorio/.test(t)) return 'sv';
+  if(/riesgos del trabajo|\bart\b|aseguradora de riesgos/.test(t)) return 'art';
+  return 'otro';
+}
+const TIPOS_COB={art:'ART', sv:'Seguro de vida', otro:'Otro'};
+function cruzarCobertura(filasNomina, docs){
+  const dnis=tipo=>{ const ds=docs.filter(d=>d.tipo===tipo); if(!ds.length) return null;
+    const s=new Set(); ds.forEach(d=>d.lista.forEach(x=>s.add(x.dni))); return s; };
+  const sArt=dnis('art'), sSv=dnis('sv');
+  const filas=filasNomina.map(f=>{ const d=soloDni(f.dni);
+    return {nombre:f.nombre, dni:f.dni, art: sArt?sArt.has(d):null, sv: sSv?sSv.has(d):null}; });
+  const dnisNom=new Set(filasNomina.map(f=>soloDni(f.dni)));
+  const ajenos=tipo=>{ const out=[], v=new Set(); docs.filter(d=>d.tipo===tipo).forEach(d=>d.lista.forEach(x=>{ if(!dnisNom.has(x.dni)&&!v.has(x.dni)){ v.add(x.dni); out.push(x.nombre); } })); return out; };
+  return { filas, total:filas.length, hayArt:!!sArt, haySv:!!sSv,
+    cArt: filas.filter(f=>f.art).length, cSv: filas.filter(f=>f.sv).length,
+    ajenosArt: ajenos('art'), ajenosSv: ajenos('sv') };
+}
+function redactarCob(cob, o){
+  const T=cob.total, P=n=>fmtPct(pct(n,T)), par=[];
+  const faltantes=(campo,txtDoc)=>{
+    const f=cob.filas.filter(x=>x[campo]===false).map(x=>nombrePropio(x.nombre));
+    if(!f.length) return ' La totalidad del personal se encuentra comprendida.';
+    const un=f.length===1;
+    return ` ${un?'No figura':'No figuran'} en ${txtDoc} ${listaNombres(f)}, lo que representa el ${P(f.length)} % de la nómina.`;
+  };
+  if(cob.hayArt) par.push(`En lo que respecta a la cobertura de riesgos del trabajo, el ${P(cob.cArt)} % del personal de ${o.empresa} asignado al predio se encuentra incluido en el certificado de cobertura de la ART presentado.`+faltantes('art','dicho certificado'));
+  if(cob.haySv) par.push(`En cuanto al seguro colectivo de vida obligatorio, el ${P(cob.cSv)} % del personal cuenta con cobertura conforme a la constancia presentada.`+faltantes('sv','dicha constancia'));
+  return par.join('\n\n');
+}
+
+/* ===================== Celdas ===================== */
+function valor(p,k){
+  switch(k){
+    case 'nombre': return p.nombre; case 'dni': return p.dni; case 'legajo': return p.legajo;
+    case 'ingEmp': return fmtFecha(p.ingEmp); case 'ingObj': return fmtFecha(p.ingObj); case 'ant': return p.ant;
+    case 'credNro': return p.cred?p.cred.nro:''; case 'credVenc': return fmtFecha(p.credVenc);
+    case 'tramite': return p.acta?`${p.acta.tipo==='A'?'Alta':'Renovación'} ${fmtFecha(p.acta.fecha)}`:'';
+    case 'comp': return p.acta?p.acta.comp:'';
+    case 'habVenc': return fmtFecha(p.habVenc); case 'estado': return p.estadoTxt;
+    case 'rnrEmi': return p.rnr?fmtFecha(p.rnr.emision):''; case 'rnrVenc': return fmtFecha(p.rnrVenc);
+    case 'recibo': return p.ultRecibo; case 'obs': return p.obs.join(' · ');
+  }
+  if(k.startsWith('doc_')) return p.docs.has(k.slice(4))?'Sí':'No';
+  return '';
+}
+function claveColor(p,k,o){
+  if(p.difCols.has(k)) return 'difCtl';
+  if(k==='habVenc'||k==='estado') return semaforo(p.habVenc,o.corte,o.aviso);
+  if(k==='credVenc') return p.enTramite&&p.credVenc?'tramite':semaforo(p.credVenc,o.corte,o.aviso);
+  if(k==='rnrVenc') return p.rnrSem;
+  return null;
+}
+function esFalta(p,k){ return (k.startsWith('doc_')&&!p.docs.has(k.slice(4))) || (k==='rnrVenc'&&!p.rnr) || (k==='habVenc'&&!p.habVenc); }
+
+/* ===================== Pintar ===================== */
+const ocultas=new Set(JSON.parse((()=>{try{return localStorage.getItem('gspOcultas')}catch(e){return null}})()||'[]'));
+function pasaFiltro(p,f){
+  switch(f){ case '': return true; case 'ven': return p.estado==='ven'; case 'pv': return p.estado==='pv'; case 'tram': return p.enTramite;
+    case 'rnr': return !p.rnr || p.rnrSem==='rojo' || p.rnrSem==='amarillo'; case 'dif': return p.difs.length>0;
+    case 'nuevo': return !p.enControl; case 'falta': return p.faltan.length>0; }
+  return true;
+}
+function filasInforme(){ const f=$('fNom').value; const alc=document.querySelector('input[name=alcance]:checked').value; return alc==='filtrada'?ultimo.activos.filter(p=>pasaFiltro(p,f)):ultimo.activos; }
+function bg(clave){ const h=hexDe(clave); return h?` style="background:#${h}"`:''; }
+
+function recalcular(){
+  if(!archivos.length && !controlFilas) return;
+  ultimo=calcular();
+  pintar();
+  // Textos para el informe: se vuelven a redactar cuando cambian los datos
+  $('textoHab').value=redactarHab(ultimo.ind,ultimo.o,ultimo.activos);
+  $('textoAnt').value=redactarAnt(ultimo.ind);
+  actualizarCobertura(true);
+}
+function resumen(){
+  const A=ultimo.activos, n=A.length, c=k=>A.filter(p=>p.estado===k).length;
+  const hab=A.filter(p=>p.estado==='vig'||p.estado==='pv').length;
+  return [
+    ['Total de personal',n],['Habilitados',hab],['Porcentaje de habilitados',n?fmtPct(hab*100/n)+' %':'—'],
+    ['Habilitación por vencer',c('pv')],['Habilitación vencida',c('ven')],['Sin datos de habilitación',c('sd')],
+    ['Credencial en trámite',A.filter(p=>p.enTramite).length],
+    ['Reincidencia vencida',A.filter(p=>p.rnrSem==='rojo').length],['Reincidencia por vencer',A.filter(p=>p.rnrSem==='amarillo').length],['Sin certificado de reincidencia',A.filter(p=>!p.rnr).length],
+    ['Con diferencias con el control',A.filter(p=>p.difs.length).length],['No figuran en el control',A.filter(p=>!p.enControl).length],['Bajas',ultimo.bajas.length]
+  ];
+}
+function pintar(){
+  const o=ultimo.o;
+  SECCIONES.forEach(id=>$(id).classList.remove('hidden'));
+  const I=ultimo.ind;
+  $('kpisHab').innerHTML=ORDEN_HAB.filter(k=>I.conteo[k]).map(k=>
+    `<div class="kpi"><div class="n">${fmtPct(pct(I.conteo[k],I.total))} %</div><div class="t">${ESTADOS_HAB[k]} · ${I.conteo[k]} de ${I.total}</div></div>`).join('');
+  pintarAnt();
+  $('kpis').innerHTML=resumen().map(([t,n])=>`<div class="kpi"><div class="n">${n}</div><div class="t">${t}</div></div>`).join('');
+  // Nómina
+  const f=$('fNom').value, F=ultimo.activos.filter(p=>pasaFiltro(p,f));
+  $('cuentaNom').textContent=`Mostrando ${F.length} de ${ultimo.activos.length} personas. Fecha de corte: ${fmtFecha(o.corte)}.`;
+  let h='<thead><tr>'+COLS.map(([k,t],i)=>`<th class="c${i} col-${k}">${t}</th>`).join('')+'</tr></thead><tbody>';
+  F.forEach(p=>{ h+='<tr>'+COLS.map(([k],i)=>{ const v=valor(p,k); const cls=['c'+i,'col-'+k]; if(k==='nombre') cls.push('nom'); if(k==='obs') cls.push('obs'); if(esFalta(p,k)) cls.push('no');
+      let txt=esc(v); if(k==='nombre'&&!p.enControl) txt+='<span class="tag">NUEVO</span>'; if(esFalta(p,k)&&!v) txt='Falta';
+      return `<td class="${cls.join(' ')}"${bg(claveColor(p,k,o))}>${txt}</td>`; }).join('')+'</tr>'; });
+  $('tablaNomina').innerHTML=h+'</tbody>';
+  aplicarColumnas();
+  // Diferencias
+  const D=[]; ultimo.activos.forEach(p=>p.difs.forEach(d=>D.push([p.nombre,p.dni,d.dato,d.ctl,d.doc,d.det])));
+  $('tablaDif').innerHTML='<thead><tr><th>APELLIDO Y NOMBRE</th><th>DNI</th><th>DATO</th><th>EXCEL DE CONTROL</th><th>DOCUMENTOS</th><th>DETALLE</th></tr></thead><tbody>'+
+    (D.length?D.map(r=>'<tr>'+r.map((v,i)=>`<td class="${i===0||i===5?'nom':''}">${esc(v)}</td>`).join('')+'</tr>').join(''):`<tr><td colspan="6">${controlFilas?'Sin diferencias.':'Falta cargar el Excel de control.'}</td></tr>`)+'</tbody>';
+  // Bajas
+  $('tablaBajas').innerHTML='<thead><tr><th>APELLIDO Y NOMBRE</th><th>DNI</th><th>LEGAJO</th><th>INGRESO EMPRESA</th><th>ÚLTIMO RECIBO</th><th>VENCE CREDENCIAL</th><th>VENCE HABILITACIÓN</th><th>REINCIDENCIA (EMISIÓN)</th></tr></thead><tbody>'+
+    (ultimo.bajas.length?ultimo.bajas.map(p=>`<tr><td class="nom">${esc(p.nombre)}</td><td>${p.dni}</td><td>${p.legajo}</td><td>${fmtFecha(p.ingEmp)}</td><td>${p.ultRecibo}</td><td>${fmtFecha(p.credVenc)}</td><td>${fmtFecha(p.actaVenc)}</td><td>${p.rnr?fmtFecha(p.rnr.emision):''}</td></tr>`).join(''):'<tr><td colspan="8">No hay bajas cargadas.</td></tr>')+'</tbody>';
+  // Actas
+  $('tablaActas').innerHTML='<thead><tr><th>ACTA</th><th>FECHA (SELLO)</th><th>APELLIDO Y NOMBRE</th><th>DNI</th><th>TRÁMITE</th><th>N.º COMPROBANTE</th><th>ASIGNADA A</th></tr></thead><tbody>'+
+    ultimo.actasUsadas.map(a=>`<tr><td class="nom">${esc(a.archivo)}</td><td>${fmtFecha(a.fecha)}</td><td class="nom">${esc(a.nom)}</td><td>${a.dni}</td><td>${a.tipo==='A'?'Alta':'Renovación'}</td><td>${esc(a.comp)}</td><td class="nom">${a.persona?esc(a.persona.nombre)+(a.persona.baja&&!a.persona.enControl?' (baja)':''):''}</td></tr>`).join('')+'</tbody>';
+  $('avisoActas').innerHTML=`${ACTAS.length} actas transcriptas (${ultimo.actasUsadas.length} filas).`+(ultimo.actasNuevas.length?` <b style="color:#b00020">Hay ${ultimo.actasNuevas.length} acta(s) en lo cargado que no están transcriptas: ${ultimo.actasNuevas.map(a=>esc(a.nombre)).join(', ')}. Sus datos no se usan todavía.</b>`:'');
+  // Sin asignar
+  const S=ultimo.sinAsignar.filter(a=>!['cv','lic','otro','curso','alta','antec'].includes(a.tipo) || a.datos.dni);
+  const credS=S.filter(a=>a.tipo==='cred');
+  $('otros').innerHTML=(credS.length?`<h3>Credenciales de personas que no están en la nómina ni en bajas</h3><ul class="fuentes">${credS.map(a=>`<li>${esc(a.datos.nombre||a.nombre)} – DNI ${a.datos.dni||'?'} – n.º ${a.datos.nro||'?'} vence ${fmtFecha(a.datos.venc)}</li>`).join('')}</ul>`:'')+
+    (S.length-credS.length?`<h3>Otros documentos sin asignar (${S.length-credS.length})</h3><div class="hint">Son de personas que no están en la nómina ni en bajas, o el nombre del archivo no alcanza para saber de quién son (por ejemplo, "DNI Calandron" sin el nombre).</div><ul class="fuentes">${S.filter(a=>a.tipo!=='cred').map(a=>`<li>${esc(a.ruta)}</li>`).join('')}</ul>`:'')+
+    (!S.length?'<div class="hint">Todos los documentos personales quedaron asignados.</div>':'');
+}
+const SECCIONES=['secResumen','secNomina','secHab','secAnt','secCob','secDif','secBajas','secActas','secOtros','secDescargas'];
+const claveTramo=p=>p.tramo==='sd'?null:p.tramo;
+const filasAntVista=()=>ultimo.activos.filter(p=>!$('fAnt').value||p.tramo===$('fAnt').value);
+const filasAntInforme=()=>document.querySelector('input[name=alcanceAnt]:checked').value==='filtrada'?filasAntVista():ultimo.activos;
+const filaAnt=p=>[p.nombre,p.dni,fmtFecha(p.fechaAnt),fmtFecha(ultimo.o.corte),p.antiguedad];
+function pintarAnt(){
+  const V=filasAntVista();
+  let h='<thead><tr><th>APELLIDO Y NOMBRE</th><th>DNI</th><th>INGRESO</th><th>FECHA ACTUAL</th><th>ANTIGÜEDAD</th></tr></thead><tbody>';
+  V.forEach(p=>{ h+=`<tr${bg(claveTramo(p))}><td class="nom">${esc(p.nombre)}</td><td>${esc(p.dni)}</td><td>${fmtFecha(p.fechaAnt)}</td><td>${fmtFecha(ultimo.o.corte)}</td><td>${p.antiguedad}</td></tr>`; });
+  if(!V.length) h+='<tr><td colspan="5">Nadie cumple con el filtro elegido.</td></tr>';
+  $('tablaAnt').innerHTML=h+'</tbody>';
+  $('cuentaAnt').textContent= V.length===ultimo.activos.length? `Mostrando los ${V.length} GS. Antigüedad según ${$('baseAnt').selectedOptions[0].text.toLowerCase()}.` : `Mostrando ${V.length} de ${ultimo.activos.length} GS (${$('fAnt').selectedOptions[0].text}).`;
+}
+const resumenHab=()=>{ const I=ultimo.ind; return ORDEN_HAB.filter(k=>I.conteo[k]).map(k=>[ESTADOS_HAB[k], I.conteo[k], fmtPct(pct(I.conteo[k],I.total))+' %']).concat([['Total',I.total,'100 %']]); };
+const resumenAnt=()=>{ const I=ultimo.ind; return TRAMOS.filter(t=>I.conteoAnt[t.key]).map(t=>[t.nombre, I.conteoAnt[t.key], fmtPct(pct(I.conteoAnt[t.key],I.total))+' %']).concat(I.conteoAnt.sd?[['Sin fecha de ingreso',I.conteoAnt.sd,fmtPct(pct(I.conteoAnt.sd,I.total))+' %']]:[]).concat([['Total',I.total,'100 %']]); };
+const parrafos=id=>$(id).value.split(/\n\s*\n/).map(p=>p.trim()).filter(Boolean);
+const resumenCob=()=>{ const r=[], T=cob.total;
+  if(cob.hayArt) r.push(['Con ART',cob.cArt,fmtPct(pct(cob.cArt,T))+' %'],['Sin ART',T-cob.cArt,fmtPct(pct(T-cob.cArt,T))+' %']);
+  if(cob.haySv) r.push(['Con seguro de vida',cob.cSv,fmtPct(pct(cob.cSv,T))+' %'],['Sin seguro de vida',T-cob.cSv,fmtPct(pct(T-cob.cSv,T))+' %']);
+  return r.concat([['Total de GS en la nómina',T,'']]); };
+
+/* ---------- Cobertura ART / seguro de vida ---------- */
+const docsCob=[]; let sigDoc=1, cob=null;
+async function lineasDeArchivo(file){
+  const ext=file.name.toLowerCase().split('.').pop();
+  if(ext==='doc') throw new Error('los archivos .doc (Word viejo) no se pueden leer; guardalo como .docx.');
+  if(ext!=='pdf' && ext!=='docx') throw new Error('debe ser .pdf o .docx.');
+  const buf=await file.arrayBuffer();
+  if(ext==='pdf'){
+    const pdf=await pdfjsLib.getDocument({data:new Uint8Array(buf)}).promise; let lineas=[];
+    for(let p=1;p<=pdf.numPages;p++){ lineas=lineas.concat(agruparLineas((await (await pdf.getPage(p)).getTextContent()).items)); }
+    return lineas;
+  }
+  if(!window.mammoth) throw new Error('no se cargó la librería para leer Word (revisá la conexión a internet).');
+  return (await mammoth.extractRawText({arrayBuffer:buf})).value.split('\n');
+}
+$('archivoDoc').addEventListener('change', async ev=>{
+  const fs=[...ev.target.files], m=$('msgDoc'); ev.target.value='';
+  if(!fs.length) return;
+  m.className='msg'; m.textContent=`Leyendo ${fs.length} archivo${fs.length===1?'':'s'}…`;
+  const errores=[];
+  for(const file of fs){
+    try{ const l=await lineasDeArchivo(file);
+      if(!l.some(x=>x.trim())) throw new Error('no tiene texto; puede ser un PDF escaneado.');
+      docsCob.push({id:sigDoc++, nombre:file.name, tipo:detectarTipoCob(l), lista:extraerLista(l)}); }
+    catch(e){ errores.push(`${file.name}: ${e&&e.message?e.message:e}`); }
+  }
+  pintarDocsCob();
+  if(errores.length){ m.className='msg err'; m.innerHTML='No se pudo leer:<br>'+errores.map(esc).join('<br>'); } else m.textContent='';
+});
+function pintarDocsCob(){
+  $('listaDocs').innerHTML=docsCob.map(dd=>{
+    const opc=Object.keys(TIPOS_COB).map(k=>`<option value="${k}"${dd.tipo===k?' selected':''}>${TIPOS_COB[k]}</option>`).join('');
+    return `<div class="doc-bloque"><div class="doc-cab"><b>${esc(dd.nombre)}</b>
+      <span class="tipo"><label style="margin:0">Tipo</label><select data-tipocob="${dd.id}">${opc}</select>
+      <button class="sec mini" data-quitar="${dd.id}">Quitar</button></span></div>
+      <div class="hint" style="margin:0">${dd.lista.length} persona${dd.lista.length===1?'':'s'} en el listado.</div></div>`; }).join('');
+  $('listaDocs').querySelectorAll('button[data-quitar]').forEach(b=>b.onclick=()=>{ const i=docsCob.findIndex(d=>d.id===+b.dataset.quitar); if(i>=0) docsCob.splice(i,1); pintarDocsCob(); });
+  $('listaDocs').querySelectorAll('select[data-tipocob]').forEach(s=>s.onchange=()=>{ const d=docsCob.find(x=>x.id===+s.dataset.tipocob); if(d){ d.tipo=s.value; actualizarCobertura(true); } });
+  actualizarCobertura(true);
+}
+const siNo=v=> v===null?'—':(v?'Sí':'No');
+const pasaFiltroCob=(f,campo,val)=> !val || (val==='si'?f[campo]===true:f[campo]===false);
+function filasCobFiltradas(){ const a=$('fArt').value, v=$('fSv').value; return cob.filas.filter(f=>pasaFiltroCob(f,'art',a)&&pasaFiltroCob(f,'sv',v)); }
+const alcanceCob=()=>document.querySelector('input[name=alcanceCob]:checked').value;
+const filasCobInforme=()=> alcanceCob()==='filtrada'?filasCobFiltradas():cob.filas;
+function descFiltro(){ const a=$('fArt'), v=$('fSv'), p=[];
+  if(a.value) p.push(a.options[a.selectedIndex].text); if(v.value) p.push(v.options[v.selectedIndex].text); return p.join(' y '); }
+function pintarTablaCob(){
+  const filas=filasCobFiltradas();
+  let h='<thead><tr><th>APELLIDO Y NOMBRE</th><th>DNI</th><th>ART</th><th>SEGURO DE VIDA</th></tr></thead><tbody>';
+  filas.forEach(f=>{ h+=`<tr><td class="nom">${esc(f.nombre)}</td><td>${esc(f.dni)}</td><td class="${f.art===false?'no':''}">${siNo(f.art)}</td><td class="${f.sv===false?'no':''}">${siNo(f.sv)}</td></tr>`; });
+  if(!filas.length) h+='<tr><td colspan="4">Ningún GS cumple con el filtro elegido.</td></tr>';
+  $('tablaCob').innerHTML=h+'</tbody>';
+  $('cuentaCob').textContent= filas.length===cob.total ? `Mostrando los ${cob.total} GS.` : `Mostrando ${filas.length} de ${cob.total} GS (${descFiltro()}).`;
+}
+function actualizarCobertura(reescribir){
+  if(!ultimo){ cob=null; return; }
+  cob=cruzarCobertura(ultimo.activos, docsCob);
+  const kpi=(titulo,hay,n)=> hay
+    ? `<div class="kpi"><div class="n">${fmtPct(pct(n,cob.total))} %</div><div class="t">${titulo} · ${n} de ${cob.total}</div></div>`
+    : `<div class="kpi"><div class="n">—</div><div class="t">${titulo} · falta cargar el documento</div></div>`;
+  $('kpisCob').innerHTML=kpi('Con ART',cob.hayArt,cob.cArt)+kpi('Con seguro de vida',cob.haySv,cob.cSv);
+  const av=[];
+  if(cob.ajenosArt.length) av.push(`En la ART figuran personas que no están en la nómina: ${cob.ajenosArt.map(esc).join(', ')}.`);
+  if(cob.ajenosSv.length) av.push(`En el seguro de vida figuran personas que no están en la nómina: ${cob.ajenosSv.map(esc).join(', ')}.`);
+  const sinDni=ultimo.activos.filter(f=>!f.dni).map(f=>esc(f.nombre));
+  if(sinDni.length && (cob.hayArt||cob.haySv)) av.push(`Sin DNI (no se pueden cruzar): ${sinDni.join(', ')}.`);
+  $('avisoCob').innerHTML=av.join('<br>'); $('avisoCob').className=av.length?'msg err':'msg';
+  pintarTablaCob();
+  if(reescribir) $('textoCob').value=redactarCob(cob, ultimo.o);
+}
+['fArt','fSv'].forEach(id=>$(id).addEventListener('change',()=>{ if(cob) pintarTablaCob(); }));
+$('fAnt').addEventListener('change',()=>{ if(ultimo) pintarAnt(); });
+
+function aplicarColumnas(){
+  const panel=$('panelCols');
+  if(!panel.dataset.ok){ panel.dataset.ok=1;
+    COLS.slice(1).forEach(([k,t])=>{ const b=document.createElement('span'); b.className='chip'+(ocultas.has(k)?' off':''); b.textContent=t; b.onclick=()=>{ ocultas.has(k)?ocultas.delete(k):ocultas.add(k); b.classList.toggle('off'); try{localStorage.setItem('gspOcultas',JSON.stringify([...ocultas]))}catch(e){} aplicarColumnas(); }; panel.appendChild(b); }); }
+  $('estiloCols').textContent=[...ocultas].map(k=>`.col-${k}{display:none}`).join('\n');
+}
+
+/* ===================== Colores ===================== */
+function pintarColores(){ document.querySelectorAll('input[data-color]').forEach(i=>{ i.value='#'+COLORES[i.dataset.color]; }); }
+document.querySelectorAll('input[data-color]').forEach(i=>i.addEventListener('input',()=>{ COLORES[i.dataset.color]=i.value.slice(1).toUpperCase(); if(ultimo) pintar(); }));
+$('btnResetColores').onclick=()=>{ ['sinAlerta','amarillo','rojo','tramite','difCtl'].forEach(k=>COLORES[k]=COLORES_DEF[k]); pintarColores(); if(ultimo) pintar(); };
+$('btnResetAnt').onclick=()=>{ ['ant0','ant1','ant2'].forEach(k=>COLORES[k]=COLORES_DEF[k]); pintarColores(); if(ultimo) pintar(); };
+pintarColores();
+
+/* ===================== Carga ===================== */
+const conError=fn=>async(...a)=>{ try{ await fn(...a); }catch(err){ $('msg').className='msg err'; $('msg').textContent='No se pudo leer: '+(err&&err.message||err); console.error(err); } };
+async function cargarZip(file){
+  if(!window.JSZip) throw new Error('no se cargó la librería para abrir ZIP (revisá la conexión a internet).');
+  $('msg').className='msg'; $('msg').textContent=`Abriendo ${file.name||'el ZIP'}…`;
+  const zip=await JSZip.loadAsync(file); const entradas=[];
+  zip.forEach((ruta,ent)=>{ entradas.push({ruta:ruta.replace(/\/$/,''), dir:ent.dir, leer:()=>ent.async('uint8array')}); });
+  const fs=entradas.filter(e=>!e.dir);
+  if(fs.length===1 && /\.zip$/i.test(fs[0].ruta)) return cargarZip(await fs[0].leer());
+  await procesarEntradas(entradas, file.name||'ZIP');
+}
+$('btnZip').onclick=()=>$('inZip').click();
+$('btnCarpeta').onclick=()=>$('inCarpeta').click();
+$('btnExcel').onclick=()=>$('inExcel').click();
+$('inZip').onchange=conError(async ev=>{ const fs=[...ev.target.files]; ev.target.value=''; for(const f of fs) await cargarZip(f); });
+$('inCarpeta').onchange=conError(async ev=>{ const fs=[...ev.target.files]; ev.target.value='';
+  await procesarEntradas(fs.map(f=>({ruta:f.webkitRelativePath||f.name, leer:async()=>new Uint8Array(await f.arrayBuffer())})), 'Carpeta'); });
+$('inExcel').onchange=conError(async ev=>{ const f=ev.target.files[0]; ev.target.value=''; if(!f) return;
+  if(!leerControl(new Uint8Array(await f.arrayBuffer()), f.name)){ $('msg').className='msg err'; $('msg').textContent='No se encontró la fila de encabezados (APELLIDO Y NOMBRE…) en el Excel.'; return; } recalcular(); });
+$('btnLimpiar').onclick=()=>{ archivos=[]; carpetasVacias=new Map(); controlFilas=null; vistos.clear(); ultimo=null; $('fuentes').innerHTML=''; $('msg').textContent='';
+  SECCIONES.forEach(id=>$(id).classList.add('hidden')); };
+const zona=$('zona');
+['dragenter','dragover'].forEach(t=>zona.addEventListener(t,e=>{ e.preventDefault(); zona.classList.add('sobre'); }));
+['dragleave','drop'].forEach(t=>zona.addEventListener(t,()=>zona.classList.remove('sobre')));
+zona.addEventListener('drop',conError(async e=>{
+  e.preventDefault();
+  const items=[...(e.dataTransfer.items||[])].map(i=>i.webkitGetAsEntry&&i.webkitGetAsEntry()).filter(Boolean);
+  const files=[...e.dataTransfer.files];
+  const entradas=[];
+  const leerDir=dir=>new Promise((ok,mal)=>{ const r=dir.createReader(), todo=[]; const sig=()=>r.readEntries(l=>{ if(!l.length) ok(todo); else { todo.push(...l); sig(); } },mal); sig(); });
+  const recorrer=async ent=>{
+    if(ent.isFile){ if(/\.zip$/i.test(ent.name)){ const f=await new Promise((ok,mal)=>ent.file(ok,mal)); await cargarZip(f); return; }
+      const file=await new Promise((ok,mal)=>ent.file(ok,mal)); entradas.push({ruta:ent.fullPath.replace(/^\//,''), leer:async()=>new Uint8Array(await file.arrayBuffer())}); }
+    else if(ent.isDirectory){ const hijos=await leerDir(ent); if(!hijos.length) entradas.push({ruta:ent.fullPath.replace(/^\//,''),dir:true}); for(const h of hijos) await recorrer(h); }
+  };
+  if(items.length){ for(const it of items) await recorrer(it); }
+  else for(const f of files){ if(/\.zip$/i.test(f.name)) await cargarZip(f); }
+  if(entradas.length) await procesarEntradas(entradas,'Carpeta');
+}));
+$('fNom').onchange=()=>ultimo&&pintar();
+['corte','vigencia','aviso','empresa','mesesPrueba','baseAnt'].forEach(id=>$(id).addEventListener('change',recalcular));
+$('corte').value=isoFecha(new Date());
+
+/* ===================== Descargas ===================== */
+function descargar(datos,nombre,tipo){ const blob=datos instanceof Blob?datos:new Blob([datos],{type:tipo});
+  const url=URL.createObjectURL(blob); const a=document.createElement('a'); a.href=url; a.download=nombre; a.style.display='none'; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(url);a.remove();},4000); }
+function avisarError(que,e){ const m=$('msgDesc'); m.className='msg err'; m.textContent=`No se pudo generar el ${que}: ${e&&e.message?e.message:e}`; console.error(e); }
+const nombreArchivo=ext=>`GSP_nomina_${isoFecha(ultimo.o.corte)}.${ext}`;
+const filasDif=()=>{ const D=[]; ultimo.activos.forEach(p=>p.difs.forEach(d=>D.push([p.nombre,p.dni,d.dato,d.ctl,d.doc,d.det]))); return D; };
+const filasBajas=()=>ultimo.bajas.map(p=>[p.nombre,p.dni,p.legajo,fmtFecha(p.ingEmp),p.ultRecibo,fmtFecha(p.credVenc),fmtFecha(p.actaVenc),p.rnr?fmtFecha(p.rnr.emision):'']);
+const CAB_BAJAS=['APELLIDO Y NOMBRE','DNI','LEGAJO','INGRESO EMPRESA','ÚLTIMO RECIBO','VENCE CREDENCIAL','VENCE HABILITACIÓN','REINCIDENCIA (EMISIÓN)'];
+const CAB_DIF=['APELLIDO Y NOMBRE','DNI','DATO','EXCEL DE CONTROL','DOCUMENTOS','DETALLE'];
+
+$('btnXlsx').onclick=()=>{
+  if(!ultimo) return; $('msgDesc').textContent='';
+  try{
+    if(typeof XLSX==='undefined') throw new Error('no se cargó la librería de Excel (revisá la conexión a internet).');
+    const o=ultimo.o;
+    const borde={top:{style:'thin',color:{rgb:'999999'}},bottom:{style:'thin',color:{rgb:'999999'}},left:{style:'thin',color:{rgb:'999999'}},right:{style:'thin',color:{rgb:'999999'}}};
+    const sHead={font:{bold:true,color:{rgb:'FFFFFF'}},fill:{patternType:'solid',fgColor:{rgb:'1F4E79'}},alignment:{horizontal:'center',vertical:'center',wrapText:true},border:borde};
+    const hoja=(cab,filas,color,anchos,izq,falta)=>{
+      const ws=XLSX.utils.aoa_to_sheet([cab].concat(filas));
+      cab.forEach((_,c)=>{ ws[XLSX.utils.encode_cell({r:0,c})].s=sHead; });
+      filas.forEach((f,r)=>f.forEach((_,c)=>{ const ref=XLSX.utils.encode_cell({r:r+1,c}); if(!ws[ref]) ws[ref]={t:'s',v:''};
+        const h=hexDe(color?color(r,c):null), fl=falta&&falta(r,c);
+        ws[ref].s={alignment:{horizontal:(izq||[0]).includes(c)?'left':'center',vertical:'top',wrapText:(izq||[0]).includes(c)},border:borde,
+          ...(fl?{font:{bold:true,color:{rgb:'B00020'}}}:{}), ...(h?{fill:{patternType:'solid',fgColor:{rgb:h}}}:{})}; }));
+      ws['!cols']=cab.map((_,i)=>({wch:(anchos&&anchos[i])||(i===0?34:14)}));
+      return ws; };
+    const F=filasInforme(), wb=XLSX.utils.book_new(), keys=COLS.map(c=>c[0]);
+    const ws=hoja(COLS.map(c=>c[1]), F.map(p=>keys.map(k=>valor(p,k)||(esFalta(p,k)?'Falta':''))), (r,c)=>claveColor(F[r],keys[c],o),
+      keys.map(k=>k==='nombre'?34:k==='obs'?80:k==='estado'?28:k==='tramite'?20:k.startsWith('doc_')?9:13), [0,keys.length-1], (r,c)=>esFalta(F[r],keys[c]));
+    XLSX.utils.book_append_sheet(wb, ws, 'Nómina');
+    XLSX.utils.book_append_sheet(wb, hoja(['INDICADOR','CANTIDAD'], [['Fecha de corte',fmtFecha(o.corte)]].concat(resumen()), null,[40,14]), 'Resumen');
+    XLSX.utils.book_append_sheet(wb, hoja(['SITUACIÓN DE LA HABILITACIÓN','CANTIDAD','PORCENTAJE'], resumenHab(), null,[46,12,12]), 'Habilitaciones');
+    const FA=filasAntInforme();
+    const wsA=hoja(['APELLIDO Y NOMBRE','DNI','INGRESO','FECHA ACTUAL','ANTIGÜEDAD'], FA.map(filaAnt), r=>claveTramo(FA[r]));
+    if(FA.length!==ultimo.activos.length) XLSX.utils.sheet_add_aoa(wsA,[[],['Filtro aplicado: '+$('fAnt').selectedOptions[0].text]],{origin:-1});
+    XLSX.utils.book_append_sheet(wb, wsA, 'Antigüedad');
+    XLSX.utils.book_append_sheet(wb, hoja(['ANTIGÜEDAD','CANTIDAD','PORCENTAJE'], resumenAnt(), null), 'Resumen antigüedad');
+    const hayCob=cob&&(cob.hayArt||cob.haySv);
+    if(hayCob){
+      const fc=filasCobInforme();
+      const wsC=hoja(['APELLIDO Y NOMBRE','DNI','ART','SEGURO DE VIDA'], fc.map(f=>[f.nombre,f.dni,siNo(f.art),siNo(f.sv)]), null,null,[0],
+        (r,c)=>(c===2&&fc[r].art===false)||(c===3&&fc[r].sv===false));
+      if(alcanceCob()==='filtrada' && descFiltro()) XLSX.utils.sheet_add_aoa(wsC,[[],['Filtro aplicado: '+descFiltro()]],{origin:-1});
+      XLSX.utils.book_append_sheet(wb, wsC, 'Cobertura');
+      XLSX.utils.book_append_sheet(wb, hoja(['COBERTURA','CANTIDAD','PORCENTAJE'], resumenCob(), null), 'Resumen cobertura');
+    }
+    const lect=XLSX.utils.aoa_to_sheet([['Fecha de corte: '+fmtFecha(o.corte)],[]].concat(parrafos('textoHab').map(p=>[p])).concat([[]]).concat(parrafos('textoAnt').map(p=>[p]))
+      .concat(hayCob?[[]].concat(parrafos('textoCob').map(p=>[p])):[]));
+    Object.keys(lect).forEach(k=>{ if(k[0]!=='!') lect[k].s={alignment:{wrapText:true,vertical:'top'}}; });
+    lect['!cols']=[{wch:110}];
+    XLSX.utils.book_append_sheet(wb, lect, 'Lectura');
+    XLSX.utils.book_append_sheet(wb, hoja(CAB_DIF, filasDif(), null,[34,12,26,16,16,60],[0,5]), 'Diferencias control');
+    XLSX.utils.book_append_sheet(wb, hoja(CAB_BAJAS, filasBajas(), null), 'Bajas');
+    XLSX.utils.book_append_sheet(wb, hoja(['ACTA','FECHA (SELLO)','APELLIDO Y NOMBRE','DNI','TRÁMITE','N.º COMPROBANTE','ASIGNADA A'],
+      ultimo.actasUsadas.map(a=>[a.archivo,fmtFecha(a.fecha),a.nom,a.dni,a.tipo==='A'?'Alta':'Renovación',a.comp,a.persona?a.persona.nombre:'']), null,[34,14,34,12,12,16,34],[0,2,6]), 'Actas');
+    descargar(XLSX.write(wb,{bookType:'xlsx',type:'array'}), nombreArchivo('xlsx'), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  }catch(e){ avisarError('Excel',e); }
+};
+$('btnPdf').onclick=()=>{
+  if(!ultimo) return; $('msgDesc').textContent='';
+  try{
+    if(!window.jspdf||!window.jspdf.jsPDF) throw new Error('no se cargó la librería de PDF (revisá la conexión a internet).');
+    const J=window.jspdf.jsPDF; if(typeof J.API.autoTable!=='function'){ if(typeof window.applyPlugin==='function') window.applyPlugin(J); else throw new Error('no se cargó el complemento de tablas para PDF.'); }
+    const o=ultimo.o, doc=new J({orientation:'landscape',unit:'mm',format:'a4'}), M=8;
+    const rgb=k=>{ const h=hexDe(k); return h?[parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)]:null; };
+    const base={theme:'grid',styles:{fontSize:6.3,halign:'center',valign:'middle',cellPadding:1,lineColor:[150,150,150],lineWidth:0.2,textColor:[20,20,20],fillColor:[255,255,255]},
+      headStyles:{fillColor:[31,78,121],textColor:255,fontSize:6},alternateRowStyles:{fillColor:[255,255,255]},margin:{left:M,right:M}};
+    const titulo=(t,y)=>{ doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(31,78,121); doc.text(t,M,y); doc.setTextColor(20,20,20); };
+    const F=filasInforme();
+    // En el PDF los documentos van en una sola columna "Faltan" para que entre en la hoja
+    const PCOLS=[['nombre','APELLIDO Y NOMBRE',30],['dni','DNI',14],['legajo','LEG.',8],['ingEmp','INGRESO EMPRESA',15],['ingObj','INGRESO OBJETIVO',15],
+      ['credNro','N.º CRED.',13],['credVenc','VENCE CREDENCIAL',15],['tramite','ÚLTIMO TRÁMITE',19],['comp','N.º COMPROB.',16],['habVenc','VENCE HABILIT.',15],['estado','ESTADO',20],
+      ['rnrEmi','REINCID. (EMISIÓN)',15],['rnrVenc','VENCE REINCID.',15],['faltan','DOC. FALTANTES',24],['obs','OBSERVACIONES',null]];
+    const keys=PCOLS.map(c=>c[0]);
+    const valPdf=(p,k)=>k==='faltan'?p.faltan.join(', '):(valor(p,k)||(esFalta(p,k)?'Falta':''));
+    titulo('GSP – Nómina del personal',12);
+    doc.setFont('helvetica','normal'); doc.setFontSize(9);
+    doc.text(`Fecha de corte: ${fmtFecha(o.corte)}   -   Total: ${ultimo.activos.length}`+(F.length!==ultimo.activos.length?`   -   Filtro: ${$('fNom').selectedOptions[0].text} (${F.length})`:''),M,18);
+    let x=M; [['amarillo','Vence dentro del aviso previo'],['rojo','Vencido'],['tramite','Credencial en trámite'],['difCtl','Distinto al Excel de control']].forEach(([k,t])=>{ doc.setFillColor(...(rgb(k)||[255,255,255])); doc.setDrawColor(150); doc.rect(x,20.5,4,3,'FD'); doc.setFontSize(8); doc.text(t,x+5.5,23); x+=doc.getTextWidth(t)+12; });
+    const cs={}; PCOLS.forEach(([k,,w],i)=>{ cs[i]=w?{cellWidth:w}:{cellWidth:'auto'}; if(k==='nombre'||k==='obs'||k==='faltan') cs[i].halign='left'; });
+    doc.autoTable(Object.assign({},base,{startY:26, head:[PCOLS.map(c=>c[1])], body:F.map(p=>keys.map(k=>valPdf(p,k))), columnStyles:cs,
+      didParseCell:d=>{ if(d.section!=='body') return; const p=F[d.row.index], k=keys[d.column.index]; const c=rgb(claveColor(p,k,o)); if(c) d.cell.styles.fillColor=c;
+        if(esFalta(p,k)){ d.cell.styles.textColor=[176,0,32]; d.cell.styles.fontStyle='bold'; } }}));
+    const textoJust=(lista,y)=>{ doc.setFont('times','normal'); doc.setFontSize(11);
+      lista.forEach(p=>{ const w=doc.internal.pageSize.getWidth(), h=doc.internal.pageSize.getHeight();
+        const n=doc.splitTextToSize(p,w-2*M).length; if(y+n*5>h-12){ doc.addPage(); y=16; }
+        doc.text(p,M,y,{maxWidth:w-2*M,align:'justify'}); y+=n*5+4; }); return y; };
+    doc.addPage(); titulo('Situación de las habilitaciones',12);
+    doc.autoTable(Object.assign({},base,{startY:17, styles:Object.assign({},base.styles,{fontSize:9}), head:[['Situación','Cantidad','Porcentaje']], body:resumenHab(), tableWidth:150, columnStyles:{0:{halign:'left'}}}));
+    textoJust(parrafos('textoHab'), doc.lastAutoTable.finalY+9);
+
+    doc.addPage('a4','portrait'); titulo('Antigüedad del personal',12);
+    let xa=M; [['ant0','Menos de un año'],['ant1','Entre uno y dos años'],['ant2','Más de dos años']].forEach(([k,t])=>{ doc.setFillColor(...(rgb(k)||[255,255,255])); doc.setDrawColor(150); doc.rect(xa,15.5,4,3,'FD'); doc.setFont('helvetica','normal'); doc.setFontSize(8); doc.text(t,xa+5.5,18); xa+=doc.getTextWidth(t)+12; });
+    const FA=filasAntInforme();
+    doc.autoTable(Object.assign({},base,{startY:22, styles:Object.assign({},base.styles,{fontSize:8}), head:[['APELLIDO Y NOMBRE','DNI','INGRESO','FECHA ACTUAL','ANTIGÜEDAD']],
+      body:FA.length?FA.map(filaAnt):[['Nadie cumple con el filtro elegido.','','','','']], columnStyles:{0:{halign:'left'}},
+      didParseCell:d=>{ if(d.section!=='body'||!FA.length) return; const c=rgb(claveTramo(FA[d.row.index])); if(c) d.cell.styles.fillColor=c; }}));
+    let ya=doc.lastAutoTable.finalY+8;
+    doc.autoTable(Object.assign({},base,{startY:ya, styles:Object.assign({},base.styles,{fontSize:9}), head:[['Antigüedad','Cantidad','Porcentaje']], body:resumenAnt(), tableWidth:120, columnStyles:{0:{halign:'left'}}}));
+    textoJust(parrafos('textoAnt'), doc.lastAutoTable.finalY+9);
+
+    if(cob && (cob.hayArt||cob.haySv)){
+      doc.addPage('a4','portrait'); titulo('Cobertura de ART y seguro de vida',12);
+      doc.autoTable(Object.assign({},base,{startY:17, styles:Object.assign({},base.styles,{fontSize:9}), head:[['Cobertura','Cantidad','Porcentaje']], body:resumenCob(), tableWidth:120, columnStyles:{0:{halign:'left'}}}));
+      let y=textoJust(parrafos('textoCob'), doc.lastAutoTable.finalY+9);
+      const fc=filasCobInforme();
+      if(alcanceCob()==='filtrada' && descFiltro()){ doc.setFont('helvetica','italic'); doc.setFontSize(9); doc.text(`Tabla filtrada: ${descFiltro()} (${fc.length} de ${cob.total} GS)`,M,y); y+=4; }
+      doc.autoTable(Object.assign({},base,{startY:y+2, styles:Object.assign({},base.styles,{fontSize:8}), head:[['APELLIDO Y NOMBRE','DNI','ART','SEGURO DE VIDA']],
+        body: fc.length? fc.map(f=>[f.nombre,f.dni,siNo(f.art),siNo(f.sv)]) : [['Ningún GS cumple con el filtro elegido.','','','']], columnStyles:{0:{halign:'left'}},
+        didParseCell:d=>{ if(d.section!=='body'||!fc.length) return; const f=fc[d.row.index];
+          if((d.column.index===2&&f.art===false)||(d.column.index===3&&f.sv===false)){ d.cell.styles.textColor=[176,0,32]; d.cell.styles.fontStyle='bold'; } }}));
+    }
+
+    doc.addPage('a4','landscape'); titulo('Resumen',12);
+    doc.autoTable(Object.assign({},base,{startY:17, styles:Object.assign({},base.styles,{fontSize:9}), head:[['Indicador','Cantidad']], body:resumen(), tableWidth:120, columnStyles:{0:{halign:'left'}}}));
+    const D=filasDif();
+    doc.addPage(); titulo('Diferencias con el Excel de control',12);
+    doc.autoTable(Object.assign({},base,{startY:17, styles:Object.assign({},base.styles,{fontSize:8}), head:[CAB_DIF], body:D.length?D:[['Sin diferencias.','','','','','']], columnStyles:{0:{halign:'left'},5:{halign:'left'}}}));
+    if(ultimo.bajas.length){ doc.addPage(); titulo('Bajas',12);
+      doc.autoTable(Object.assign({},base,{startY:17, styles:Object.assign({},base.styles,{fontSize:8}), head:[CAB_BAJAS], body:filasBajas(), columnStyles:{0:{halign:'left'}}})); }
+    descargar(doc.output('blob'), nombreArchivo('pdf'), 'application/pdf');
+  }catch(e){ avisarError('PDF',e); }
+};
+</script>
+</body>
+</html>
