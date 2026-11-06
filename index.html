@@ -67,7 +67,7 @@
 <body>
 <header>
   <h1>GSP – Control de personal</h1>
-  <p>Cargá los ZIP (o carpetas) de Habilitaciones y de Personal; la página arma la nómina y la compara con el Excel de control de vencimientos. · <b>Versión 4 (05/11/2026)</b></p>
+  <p>Cargá los ZIP (o carpetas) de Habilitaciones y de Personal; la página arma la nómina y la compara con el Excel de control de vencimientos. · <b>Versión 5 (06/11/2026)</b></p>
 </header>
 <main>
 
@@ -126,7 +126,10 @@
     <label><input type="color" data-color="sinAlerta"> Sin alerta</label>
     <label><input type="color" data-color="amarillo"> Vence dentro del aviso previo</label>
     <label><input type="color" data-color="rojo"> Vencido a la fecha de corte</label>
-    <label><input type="color" data-color="tramite"> Credencial anterior al último trámite (en trámite)</label>
+    <label><input type="color" data-color="dpgsp"> Credencial DPGSP</label>
+    <label><input type="color" data-color="compr"> Comprobante de presentación</label>
+    <label><input type="color" data-color="ingIgual"> Ingresos iguales</label>
+    <label><input type="color" data-color="ingDist"> Ingresos distintos</label>
     <label><input type="color" data-color="difCtl"> Distinto al Excel de control</label>
     <button class="sec mini" id="btnResetColores">Restablecer colores</button>
   </div>
@@ -140,7 +143,6 @@
         <option value="rnr">Reincidencia vencida, por vencer o sin certificado</option>
         <option value="dif">Con diferencias con el Excel de control</option>
         <option value="nuevo">No figuran en el Excel de control</option>
-        <option value="falta">Con documentos faltantes</option>
       </select></div>
     <div><label>En el informe (PDF y Excel) incluir</label>
       <label style="display:inline;margin-right:12px"><input type="radio" name="alcance" value="completa" checked> Tabla completa</label>
@@ -293,7 +295,7 @@ const COMPROBANTES = {
 function comprobanteDe(archivo,dni){ const c=COMPROBANTES[archivo]; if(!c) return ''; return (c.filas&&c.filas[dni])||c.comp||''; }
 
 /* ===================== Configuración ===================== */
-const COLORES_DEF={ sinAlerta:'FFFFFF', amarillo:'FFF2A0', rojo:'FF8B8B', tramite:'DDEBF7', difCtl:'FCD5B4', ant0:'FFFFFF', ant1:'FFF2A0', ant2:'A9D18E' };
+const COLORES_DEF={ sinAlerta:'FFFFFF', amarillo:'FFF2A0', rojo:'FF8B8B', dpgsp:'DDEBF7', compr:'E4DFEC', ingIgual:'C6EFCE', ingDist:'F8CBAD', difCtl:'FCD5B4', ant0:'FFFFFF', ant1:'FFF2A0', ant2:'A9D18E' };
 // Situación de la habilitación para los indicadores (mismas categorías que en Costa Esmeralda)
 const ESTADOS_HAB={ vig:'Habilitación vigente con credencial', sas:'Vigente por comprobante de presentación', ven:'Habilitación vencida',
   sij:'Sin habilitación (período de prueba)', snj:'Sin habilitación (fuera del período de prueba)', otr:'Sin datos suficientes' };
@@ -301,11 +303,12 @@ const ORDEN_HAB=['vig','sas','ven','sij','snj','otr'];
 const TRAMOS=[ {key:'ant0', nombre:'Menos de un año'}, {key:'ant1', nombre:'Entre uno y dos años'}, {key:'ant2', nombre:'Más de dos años'} ];
 const COLORES=Object.assign({},COLORES_DEF);
 const DOCS=[['dni','DNI'],['cuil','CUIL'],['preoc','PREOCUP.'],['psico','PSICOT.'],['dj','DJ'],['curso','CURSO']];
-const COLS=[ // [clave, encabezado]
- ['nombre','APELLIDO Y NOMBRE'],['dni','DNI'],['legajo','LEGAJO'],['ingEmp','INGRESO EMPRESA'],['ingObj','INGRESO OBJETIVO'],['ant','ANTIGÜEDAD'],
- ['credNro','N.º CREDENCIAL'],['credVenc','VENCE CREDENCIAL'],['tramite','ÚLTIMO TRÁMITE (ACTA)'],['comp','N.º COMPROBANTE PRESENTACIÓN'],['habVenc','VENCE HABILITACIÓN'],['estado','ESTADO'],
- ['rnrEmi','REINCIDENCIA (EMISIÓN)'],['rnrVenc','VENCE REINCIDENCIA'],['recibo','ÚLTIMO RECIBO'],
- ...DOCS.map(([k,t])=>['doc_'+k,t]), ['obs','OBSERVACIONES'] ];
+const COLS=[ // [clave, encabezado] — mismo formato de salida que Costa Esmeralda
+ ['nombre','APELLIDO Y NOMBRE'],['dni','DNI'],['ingEmp','INGRESO (EMPRESA)'],['ingObj','INGRESO AL OBJETIVO'],
+ ['nroCC','N.º CREDENCIAL / COMPROBANTE'],['habVenc','VENCIMIENTO CREDENCIAL / COMPROBANTE'],['rnrEmi','REINCIDENCIA (EMISIÓN)'],['rnrVenc','VENCE REINCIDENCIA'],['obs','OBSERVACIONES'] ];
+// N.º y tipo: la credencial DPGSP si cubre el último trámite; si no, el comprobante de la presentación
+const tipoCC=p=> p.enTramite ? 'Comprobante' : (p.cred&&p.cred.nro?'DPGSP':(p.acta?'Comprobante':''));
+const nroCC=p=> tipoCC(p)==='DPGSP' ? p.cred.nro : (p.acta&&p.acta.comp||'');
 const CATEGORIAS=['credenciales','altas presentaciones','datos personales','dni','antecedentes','reincidencias','altas afip','empresa','vehiculos','equipos de comunicacion','equipos de comunicaci u00f3n','2024','2025','2026','habilitaciones'];
 
 /* ===================== Utilidades ===================== */
@@ -525,6 +528,30 @@ async function procesarEntradas(entradas, origen){
 }
 
 /* ---------- Nómina base ---------- */
+const CAB_INTERNOS=['DNI','APELLIDO Y NOMBRE','LEGAJO','N.º CREDENCIAL DPGSP','VENCE CREDENCIAL','TRÁMITE (A/R)','FECHA TRÁMITE','COMPROBANTE','ÚLTIMO RECIBO','DOCUMENTOS'];
+// Formato de salida igual a Costa (versión 5): la nómina visible manda; la hoja oculta "Datos internos" completa el resto
+function leerBaseCosta(wb, filas, enc, nombre){
+  const iDe=re=>enc.findIndex(c=>re.test(c));
+  const iNom=iDe(/^apellido/), iDni=iDe(/^dni$/), iIngE=iDe(/^ingreso (empresa|alta)/), iIngO=iDe(/^ingreso al objetivo|^ingreso objetivo/),
+    iNro=iDe(/^n credencial comprobante/), iVen=iDe(/^vencimiento credencial/), iRnr=iDe(/^reincidencia/), iObs=iDe(/^observaciones/), iTipo=iDe(/^tipo$/);
+  const txt=(f,i)=>i<0?'':String(f[i]==null?'':f[i]).trim();
+  const internos=new Map(); const hI=wb.SheetNames.find(n=>norm(n)==='datos internos');
+  if(hI) XLSX.utils.sheet_to_json(wb.Sheets[hI],{header:1,raw:false,defval:''}).slice(1).forEach(f=>{ if(f[0]||f[1]) internos.set(soloDni(f[0])||norm(f[1]),f); });
+  const vig=parseInt($('vigencia').value,10)||12, out=[];
+  for(let r=1;r<filas.length;r++){ const f=filas[r]; const n=txt(f,iNom); if(!n) continue;
+    const dni=soloDni(txt(f,iDni)), I=internos.get(dni)||internos.get(norm(n))||null;
+    const tipo=txt(f,iTipo), nro=txt(f,iNro).replace(/\.0+$/,''), venc=parsearFecha(f[iVen]);
+    const b={nombre:n.toUpperCase(), dni, legajo:I?String(I[2]):'', ingEmp:parsearFecha(f[iIngE]), ingObj:parsearFecha(f[iIngO]),
+      credNro:I?String(I[3]):'', credVenc:I?parsearFecha(I[4]):null, tramTipo:I?String(I[5]):'', tramFecha:I?parsearFecha(I[6]):null, comp:I?String(I[7]):'',
+      habVenc:venc, rnrEmi:parsearFecha(f[iRnr]), recibo:I?String(I[8]):'', docs:new Set(I?String(I[9]).split(',').filter(Boolean):[]), obs:txt(f,iObs).replace(/^Falta$/,'')};
+    // lo que se ve en la nómina manda (por si se corrigió a mano)
+    if(/dpgsp/i.test(tipo)){ if(nro) b.credNro=nro; if(!b.credVenc) b.credVenc=venc; }
+    else if(nro) b.comp=nro;
+    if(!b.tramFecha && venc && !/dpgsp/i.test(tipo)){ b.tramFecha=sumarMeses(venc,-vig); b.tramTipo=b.tramTipo||'R'; }
+    out.push(b);
+  }
+  return terminarBase(wb, out, nombre);
+}
 function leerBase(bytes,nombre){
   if(typeof XLSX==='undefined') throw new Error('no se cargó la librería de Excel (revisá la conexión a internet).');
   const wb=XLSX.read(bytes,{type:'array',cellDates:true});
@@ -533,6 +560,7 @@ function leerBase(bytes,nombre){
   const enc=(filas[0]||[]).map(c=>norm(c));
   const iDe=re=>enc.findIndex(c=>re.test(c));
   const iNom=iDe(/^apellido/); if(iNom<0) throw new Error('la hoja "Nómina" no tiene la columna APELLIDO Y NOMBRE.');
+  if(iDe(/^vencimiento credencial/)>=0) return leerBaseCosta(wb, filas, enc, nombre);
   const iDni=enc.indexOf('dni'), iDniDoc=enc.indexOf('dni',iDni+1);
   const col={legajo:iDe(/^legajo/), ingEmp:iDe(/^ingreso empresa/), ingObj:iDe(/^ingreso objetivo/), credNro:iDe(/credencial$/), credVenc:iDe(/^vence credencial/),
     tramite:iDe(/^ultimo tramite/), comp:iDe(/comprobante/), habVenc:iDe(/^vence habilitacion/), rnrEmi:iDe(/^reincidencia/), recibo:iDe(/^ultimo recibo/), obs:iDe(/^observaciones/),
@@ -548,6 +576,9 @@ function leerBase(bytes,nombre){
       tramTipo:mt?(/alta/i.test(mt[1])?'A':'R'):'', tramFecha:parsearFecha(t), comp:txt(f,col.comp), habVenc:parsearFecha(f[col.habVenc]),
       rnrEmi:parsearFecha(f[col.rnrEmi]), recibo:txt(f,col.recibo), docs, obs:txt(f,col.obs)});
   }
+  return terminarBase(wb, out, nombre);
+}
+function terminarBase(wb, out, nombre){
   if(!out.length) throw new Error('la nómina no tiene filas.');
   // Registro de archivos y propuestas descartadas
   registrados=new Map(); descPrevias=new Map();
@@ -681,7 +712,7 @@ function calcular(){
 
 /* ===================== Propuestas de cambio (nómina base) ===================== */
 const DATOS_PROP={dni:'DNI', legajo:'Legajo', ingEmp:'Ingreso a la empresa', cred:'Credencial', hab:'Última presentación / habilitación', rnr:'Reincidencia', recibo:'Último recibo', docs:'Documentos', baja:'Pasa a bajas', nuevo:'Persona nueva'};
-const COLS_PROP={dni:['dni'], legajo:['legajo'], ingEmp:['ingEmp','ant'], cred:['credNro','credVenc'], hab:['tramite','comp','habVenc','estado'], rnr:['rnrEmi','rnrVenc'], recibo:['recibo'], docs:[]};
+const COLS_PROP={dni:['dni'], legajo:[], ingEmp:['ingEmp'], cred:['nroCC','tipo'], hab:['nroCC','tipo','habVenc'], rnr:['rnrEmi','rnrVenc'], recibo:[], docs:[]};
 function propuesta(p,campo,dato,antes,despues,val,src){
   const id=p.base?p.base.dni||p.base.nombre:(p.dni||p.nombre);
   return {key:`${id}|${campo}|${despues}`, p, campo, dato, antes:antes||'—', despues, val, src:(src||[]).filter(Boolean), nombre:p.base?p.base.nombre:p.nombre, dni:p.base?p.base.dni:p.dni};
@@ -692,7 +723,7 @@ function proponer(p,o,archActa){
   const b=p.base, out=[];
   if(!b.dni && p.dni) out.push(propuesta(p,'dni','DNI','',p.dni,{dni:p.dni},[]));
   const recIng=p.recibos.find(r=>r.ingreso);
-  if(p.legajo && p.legajo!==b.legajo){ const r=p.recibos.find(x=>x.legajo===p.legajo); out.push(propuesta(p,'legajo','Legajo',b.legajo,p.legajo,{legajo:p.legajo},[r&&r.src])); }
+  if(false && p.legajo && p.legajo!==b.legajo){ const r=p.recibos.find(x=>x.legajo===p.legajo); out.push(propuesta(p,'legajo','Legajo',b.legajo,p.legajo,{legajo:p.legajo},[r&&r.src])); }
   if(p.ingEmp && !mismaFecha(p.ingEmp,b.ingEmp)) out.push(propuesta(p,'ingEmp','Ingreso a la empresa',fmtFecha(b.ingEmp),fmtFecha(p.ingEmp),{ingEmp:p.ingEmp},[recIng&&recIng.src]));
   const c=p.cred;
   if(c && (!b.credVenc || c.venc>b.credVenc || (mismaFecha(c.venc,b.credVenc) && c.nro && c.nro!==b.credNro)))
@@ -706,9 +737,9 @@ function proponer(p,o,archActa){
       {tramTipo:a.tipo,tramFecha:a.fecha,comp:a.comp||'',habVenc:v},[archActa.get(norm(a.archivo))])); }
   const r=p.rnr;
   if(r && (!b.rnrEmi || r.emision>b.rnrEmi)) out.push(propuesta(p,'rnr','Reincidencia',b.rnrEmi?'emitida '+fmtFecha(b.rnrEmi):'',`emitida ${fmtFecha(r.emision)}`,{rnrEmi:r.emision},[r.src]));
-  if(p.ultRecibo && periodo(p.ultRecibo)>periodo(b.recibo)){ const rr=p.recibos.find(x=>x.periodo===periodo(p.ultRecibo)); out.push(propuesta(p,'recibo','Último recibo',b.recibo,p.ultRecibo,{recibo:p.ultRecibo},[rr&&rr.src])); }
+  if(false && p.ultRecibo && periodo(p.ultRecibo)>periodo(b.recibo)){ const rr=p.recibos.find(x=>x.periodo===periodo(p.ultRecibo)); out.push(propuesta(p,'recibo','Último recibo',b.recibo,p.ultRecibo,{recibo:p.ultRecibo},[rr&&rr.src])); }
   const nuevosDocs=DOCS.filter(([k])=>p.docs.has(k)&&!b.docs.has(k));
-  if(nuevosDocs.length) out.push(propuesta(p,'docs','Documentos','',`agrega ${nuevosDocs.map(([,t])=>t).join(', ')}`,{docs:nuevosDocs.map(([k])=>k)},[].concat(...nuevosDocs.map(([k])=>(p.docSrc&&p.docSrc[k])||[]))));
+  if(false && nuevosDocs.length) out.push(propuesta(p,'docs','Documentos','',`agrega ${nuevosDocs.map(([,t])=>t).join(', ')}`,{docs:nuevosDocs.map(([k])=>k)},[].concat(...nuevosDocs.map(([k])=>(p.docSrc&&p.docSrc[k])||[]))));
   if(p.carpetas.length && p.carpetas.every(c=>c.baja)) out.push(propuesta(p,'baja','Pasa a bajas','activo',`su carpeta está en BAJAS (${p.carpetas.map(c=>c.nombre).join(', ')})`,{},[].concat(...p.carpetas.map(c=>c.arch))));
   return out;
 }
@@ -922,6 +953,7 @@ function valor(p,k){
     case 'credNro': return p.cred?p.cred.nro:''; case 'credVenc': return fmtFecha(p.credVenc);
     case 'tramite': return p.acta?`${p.acta.tipo==='A'?'Alta':'Renovación'} ${fmtFecha(p.acta.fecha)}`:'';
     case 'comp': return p.acta?p.acta.comp:'';
+    case 'nroCC': return nroCC(p); case 'tipo': return tipoCC(p);
     case 'habVenc': return fmtFecha(p.habVenc); case 'estado': return p.estadoTxt;
     case 'rnrEmi': return p.rnr?fmtFecha(p.rnr.emision):''; case 'rnrVenc': return fmtFecha(p.rnrVenc);
     case 'recibo': return p.ultRecibo; case 'obs': return p.obs.join(' · ');
@@ -930,20 +962,22 @@ function valor(p,k){
   return '';
 }
 function claveColor(p,k,o){
-  if(p.difCols.has(k)) return 'difCtl';
+  if(p.difCols.has(k) || (k==='nroCC'&&p.difCols.has('credNro'))) return 'difCtl';
+  if(k==='ingEmp'||k==='ingObj') return p.ingEmp&&p.ingObj ? (mismaFecha(p.ingEmp,p.ingObj)?'ingIgual':'ingDist') : null;
+  if(k==='nroCC'||k==='tipo'){ const t=tipoCC(p); return t==='DPGSP'?'dpgsp':t?'compr':null; }
   if(k==='habVenc'||k==='estado') return semaforo(p.habVenc,o.corte,o.aviso);
   if(k==='credVenc') return p.enTramite&&p.credVenc?'tramite':semaforo(p.credVenc,o.corte,o.aviso);
   if(k==='rnrVenc') return p.rnrSem;
   return null;
 }
-function esFalta(p,k){ return (k.startsWith('doc_')&&!p.docs.has(k.slice(4))) || (k==='rnrVenc'&&!p.rnr) || (k==='habVenc'&&!p.habVenc); }
+function esFalta(p,k){ return (k==='rnrVenc'&&!p.rnr) || (k==='habVenc'&&!p.habVenc); }
 
 /* ===================== Pintar ===================== */
 const ocultas=new Set(JSON.parse((()=>{try{return localStorage.getItem('gspOcultas')}catch(e){return null}})()||'[]'));
 function pasaFiltro(p,f){
   switch(f){ case '': return true; case 'ven': return p.estado==='ven'; case 'pv': return p.estado==='pv'; case 'tram': return p.enTramite;
     case 'rnr': return !p.rnr || p.rnrSem==='rojo' || p.rnrSem==='amarillo'; case 'dif': return p.difs.length>0;
-    case 'nuevo': return !p.enControl; case 'falta': return p.faltan.length>0; }
+    case 'nuevo': return !p.enControl; }
   return true;
 }
 function filasInforme(){ const f=$('fNom').value; const alc=document.querySelector('input[name=alcance]:checked').value; return alc==='filtrada'?ultimo.activos.filter(p=>pasaFiltro(p,f)):ultimo.activos; }
@@ -997,8 +1031,8 @@ function pintar(){
   $('tablaDif').innerHTML='<thead><tr><th>APELLIDO Y NOMBRE</th><th>DNI</th><th>DATO</th><th>EXCEL DE CONTROL</th><th>DOCUMENTOS</th><th>DETALLE</th></tr></thead><tbody>'+
     (D.length?D.map(r=>'<tr>'+r.map((v,i)=>`<td class="${i===0||i===5?'nom':''}">${esc(v)}</td>`).join('')+'</tr>').join(''):`<tr><td colspan="6">${controlFilas?'Sin diferencias.':'Falta cargar el Excel de control.'}</td></tr>`)+'</tbody>';
   // Bajas
-  $('tablaBajas').innerHTML='<thead><tr><th>APELLIDO Y NOMBRE</th><th>DNI</th><th>LEGAJO</th><th>INGRESO EMPRESA</th><th>ÚLTIMO RECIBO</th><th>VENCE CREDENCIAL</th><th>VENCE HABILITACIÓN</th><th>REINCIDENCIA (EMISIÓN)</th></tr></thead><tbody>'+
-    (ultimo.bajas.length?ultimo.bajas.map(p=>`<tr><td class="nom">${esc(p.nombre)}</td><td>${p.dni}</td><td>${p.legajo}</td><td>${fmtFecha(p.ingEmp)}</td><td>${p.ultRecibo}</td><td>${fmtFecha(p.credVenc)}</td><td>${fmtFecha(p.actaVenc)}</td><td>${p.rnr?fmtFecha(p.rnr.emision):''}</td></tr>`).join(''):'<tr><td colspan="8">No hay bajas cargadas.</td></tr>')+'</tbody>';
+  $('tablaBajas').innerHTML='<thead><tr>'+CAB_BAJAS.map(t=>`<th>${t}</th>`).join('')+'</tr></thead><tbody>'+
+    (ultimo.bajas.length?filasBajas().map(r=>'<tr>'+r.map((v,i)=>`<td class="${i===0?'nom':''}">${esc(v)}</td>`).join('')+'</tr>').join(''):'<tr><td colspan="7">No hay bajas cargadas.</td></tr>')+'</tbody>';
   // Actas
   $('tablaActas').innerHTML='<thead><tr><th>ACTA</th><th>FECHA (SELLO)</th><th>APELLIDO Y NOMBRE</th><th>DNI</th><th>TRÁMITE</th><th>N.º COMPROBANTE</th><th>ASIGNADA A</th></tr></thead><tbody>'+
     ultimo.actasUsadas.map(a=>`<tr><td class="nom">${esc(a.archivo)}</td><td>${fmtFecha(a.fecha)}</td><td class="nom">${esc(a.nom)}</td><td>${a.dni}</td><td>${a.tipo==='A'?'Alta':'Renovación'}</td><td>${esc(a.comp)}</td><td class="nom">${a.persona?esc(a.persona.nombre)+(a.persona.baja&&!a.persona.enControl?' (baja)':''):''}</td></tr>`).join('')+'</tbody>';
@@ -1156,7 +1190,7 @@ function aplicarColumnas(){
 /* ===================== Colores ===================== */
 function pintarColores(){ document.querySelectorAll('input[data-color]').forEach(i=>{ i.value='#'+COLORES[i.dataset.color]; }); }
 document.querySelectorAll('input[data-color]').forEach(i=>i.addEventListener('input',()=>{ COLORES[i.dataset.color]=i.value.slice(1).toUpperCase(); if(ultimo) pintar(); }));
-$('btnResetColores').onclick=()=>{ ['sinAlerta','amarillo','rojo','tramite','difCtl'].forEach(k=>COLORES[k]=COLORES_DEF[k]); pintarColores(); if(ultimo) pintar(); };
+$('btnResetColores').onclick=()=>{ ['sinAlerta','amarillo','rojo','dpgsp','compr','ingIgual','ingDist','difCtl'].forEach(k=>COLORES[k]=COLORES_DEF[k]); pintarColores(); if(ultimo) pintar(); };
 $('btnResetAnt').onclick=()=>{ ['ant0','ant1','ant2'].forEach(k=>COLORES[k]=COLORES_DEF[k]); pintarColores(); if(ultimo) pintar(); };
 pintarColores();
 
@@ -1226,8 +1260,8 @@ function descargar(datos,nombre,tipo){ const blob=datos instanceof Blob?datos:ne
 function avisarError(que,e){ const m=$('msgDesc'); m.className='msg err'; m.textContent=`No se pudo generar el ${que}: ${e&&e.message?e.message:e}`; console.error(e); }
 const nombreArchivo=ext=>`GSP_nomina_${isoFecha(ultimo.o.corte)}.${ext}`;
 const filasDif=()=>{ const D=[]; ultimo.activos.forEach(p=>p.difs.forEach(d=>D.push([p.nombre,p.dni,d.dato,d.ctl,d.doc,d.det]))); return D; };
-const filasBajas=()=>ultimo.bajas.map(p=>[p.nombre,p.dni,p.legajo,fmtFecha(p.ingEmp),p.ultRecibo,fmtFecha(p.credVenc),fmtFecha(p.actaVenc),p.rnr?fmtFecha(p.rnr.emision):'']);
-const CAB_BAJAS=['APELLIDO Y NOMBRE','DNI','LEGAJO','INGRESO EMPRESA','ÚLTIMO RECIBO','VENCE CREDENCIAL','VENCE HABILITACIÓN','REINCIDENCIA (EMISIÓN)'];
+const filasBajas=()=>ultimo.bajas.map(p=>[p.nombre,p.dni,fmtFecha(p.ingEmp),nroCC(p),fmtFecha(p.habVenc||p.actaVenc),p.rnr?fmtFecha(p.rnr.emision):'',fmtFecha(p.rnrVenc)]);
+const CAB_BAJAS=['APELLIDO Y NOMBRE','DNI','INGRESO (EMPRESA)','N.º CREDENCIAL / COMPROBANTE','VENCIMIENTO CREDENCIAL / COMPROBANTE','REINCIDENCIA (EMISIÓN)','VENCE REINCIDENCIA'];
 const CAB_DIF=['APELLIDO Y NOMBRE','DNI','DATO','EXCEL DE CONTROL','DOCUMENTOS','DETALLE'];
 
 $('btnXlsx').onclick=()=>{
@@ -1250,9 +1284,10 @@ $('btnXlsx').onclick=()=>{
       ws['!cols']=cab.map((_,i)=>({wch:(anchos&&anchos[i])||(i===0?34:14)}));
       return ws; };
     // Con nómina base, la hoja Nómina sale siempre completa (es la base de la próxima vez)
-    const F=base?ultimo.activos:filasInforme(), wb=XLSX.utils.book_new(), keys=COLS.map(c=>c[0]);
-    const ws=hoja(COLS.map(c=>c[1]), F.map(p=>keys.map(k=>valor(p,k)||(esFalta(p,k)?'Falta':''))), (r,c)=>claveColor(F[r],keys[c],o),
-      keys.map(k=>k==='nombre'?34:k==='obs'?80:k==='estado'?28:k==='tramite'?20:k.startsWith('doc_')?9:13), [0,keys.length-1], (r,c)=>esFalta(F[r],keys[c]),
+    const F=base?ultimo.activos:filasInforme(), wb=XLSX.utils.book_new();
+    const XC=COLS.concat([['tipo','TIPO']]), keys=XC.map(c=>c[0]);   // el Excel agrega TIPO (DPGSP / Comprobante), como en Costa
+    const ws=hoja(XC.map(c=>c[1]), F.map(p=>keys.map(k=>valor(p,k)||(esFalta(p,k)?'Falta':''))), (r,c)=>claveColor(F[r],keys[c],o),
+      keys.map(k=>k==='nombre'?34:k==='obs'?70:k==='nroCC'||k==='habVenc'?18:k==='tipo'?14:14), [0,keys.indexOf('obs')], (r,c)=>esFalta(F[r],keys[c]),
       (r,c)=>{ const p=F[r], k=keys[c]; return p.pend&&p.pend.has(k)?'pend':p.acept&&p.acept.has(k)?'acept':null; });
     XLSX.utils.book_append_sheet(wb, ws, 'Nómina');
     if(base){
@@ -1265,6 +1300,9 @@ $('btnXlsx').onclick=()=>{
       const pend=ultimo.props.filter(x=>estadoProp(x)==='pend');
       XLSX.utils.book_append_sheet(wb, hoja(['APELLIDO Y NOMBRE','DNI','DATO','EN LA NÓMINA','PROPUESTO','ARCHIVO'], pend.map(x=>[x.nombre,x.dni,x.dato,x.antes,x.despues,x.src.map(a=>a.nombre).join(' | ')]), null,[34,12,26,30,40,60],[0,2,3,4,5]), 'Propuestas pendientes');
     }
+    // Hoja oculta con los datos que la página necesita para la próxima carga (no se muestran en la nómina)
+    const wsI=XLSX.utils.aoa_to_sheet([CAB_INTERNOS].concat(F.map(p=>[p.dni,p.nombre,p.legajo||'',p.cred&&p.cred.nro||'',fmtFecha(p.credVenc),p.acta?p.acta.tipo:'',p.acta?fmtFecha(p.acta.fecha):'',p.acta&&p.acta.comp||'',p.ultRecibo||'',[...(p.docs||[])].join(',')])));
+    XLSX.utils.book_append_sheet(wb, wsI, 'Datos internos');
     XLSX.utils.book_append_sheet(wb, hoja(['INDICADOR','CANTIDAD'], [['Fecha de corte',fmtFecha(o.corte)]].concat(resumen()), null,[40,14]), 'Resumen');
     XLSX.utils.book_append_sheet(wb, hoja(['SITUACIÓN DE LA HABILITACIÓN','CANTIDAD','PORCENTAJE'], resumenHab(), null,[46,12,12]), 'Habilitaciones');
     const FA=filasAntInforme();
@@ -1290,6 +1328,7 @@ $('btnXlsx').onclick=()=>{
     XLSX.utils.book_append_sheet(wb, hoja(CAB_BAJAS, filasBajas(), null), 'Bajas');
     XLSX.utils.book_append_sheet(wb, hoja(['ACTA','FECHA (SELLO)','APELLIDO Y NOMBRE','DNI','TRÁMITE','N.º COMPROBANTE','ASIGNADA A'],
       ultimo.actasUsadas.map(a=>[a.archivo,fmtFecha(a.fecha),a.nom,a.dni,a.tipo==='A'?'Alta':'Renovación',a.comp,a.persona?a.persona.nombre:'']), null,[34,14,34,12,12,16,34],[0,2,6]), 'Actas');
+    wb.Workbook={Sheets:wb.SheetNames.map(n=>({name:n, Hidden:n==='Datos internos'?1:0}))};
     descargar(XLSX.write(wb,{bookType:'xlsx',type:'array'}), nombreArchivo('xlsx'), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   }catch(e){ avisarError('Excel',e); }
 };
@@ -1304,18 +1343,16 @@ $('btnPdf').onclick=()=>{
       headStyles:{fillColor:[31,78,121],textColor:255,fontSize:6},alternateRowStyles:{fillColor:[255,255,255]},margin:{left:M,right:M}};
     const titulo=(t,y)=>{ doc.setFont('helvetica','bold'); doc.setFontSize(13); doc.setTextColor(31,78,121); doc.text(t,M,y); doc.setTextColor(20,20,20); };
     const F=filasInforme();
-    // En el PDF los documentos van en una sola columna "Faltan" para que entre en la hoja
-    const PCOLS=[['nombre','APELLIDO Y NOMBRE',30],['dni','DNI',14],['legajo','LEG.',8],['ingEmp','INGRESO EMPRESA',15],['ingObj','INGRESO OBJETIVO',15],
-      ['credNro','N.º CRED.',13],['credVenc','VENCE CREDENCIAL',15],['tramite','ÚLTIMO TRÁMITE',19],['comp','N.º COMPROB.',16],['habVenc','VENCE HABILIT.',15],['estado','ESTADO',20],
-      ['rnrEmi','REINCID. (EMISIÓN)',15],['rnrVenc','VENCE REINCID.',15],['faltan','DOC. FALTANTES',24],['obs','OBSERVACIONES',null]];
+    const PCOLS=[['nombre','APELLIDO Y NOMBRE',52],['dni','DNI',18],['ingEmp','INGRESO (EMPRESA)',20],['ingObj','INGRESO AL OBJETIVO',20],
+      ['nroCC','N.º CREDENCIAL / COMPROBANTE',26],['habVenc','VENCIMIENTO CREDENCIAL / COMPROBANTE',26],['rnrEmi','REINCIDENCIA (EMISIÓN)',20],['rnrVenc','VENCE REINCIDENCIA',20],['obs','OBSERVACIONES',null]];
     const keys=PCOLS.map(c=>c[0]);
-    const valPdf=(p,k)=>k==='faltan'?p.faltan.join(', '):(valor(p,k)||(esFalta(p,k)?'Falta':''));
-    titulo('GSP – Nómina del personal',12);
+    const valPdf=(p,k)=>valor(p,k)||(esFalta(p,k)?'Falta':'');
+    titulo('GSP – Control de personal',12);
     doc.setFont('helvetica','normal'); doc.setFontSize(9);
     doc.text(`Fecha de corte: ${fmtFecha(o.corte)}   -   Total: ${ultimo.activos.length}`+(F.length!==ultimo.activos.length?`   -   Filtro: ${$('fNom').selectedOptions[0].text} (${F.length})`:''),M,18);
-    let x=M; [['amarillo','Vence dentro del aviso previo'],['rojo','Vencido'],['tramite','Credencial en trámite'],['difCtl','Distinto al Excel de control']].forEach(([k,t])=>{ doc.setFillColor(...(rgb(k)||[255,255,255])); doc.setDrawColor(150); doc.rect(x,20.5,4,3,'FD'); doc.setFontSize(8); doc.text(t,x+5.5,23); x+=doc.getTextWidth(t)+12; });
-    const cs={}; PCOLS.forEach(([k,,w],i)=>{ cs[i]=w?{cellWidth:w}:{cellWidth:'auto'}; if(k==='nombre'||k==='obs'||k==='faltan') cs[i].halign='left'; });
-    doc.autoTable(Object.assign({},base,{startY:26, head:[PCOLS.map(c=>c[1])], body:F.map(p=>keys.map(k=>valPdf(p,k))), columnStyles:cs,
+    let x=M; [['dpgsp','Credencial DPGSP'],['compr','Comprobante de presentación'],['ingIgual','Ingresos iguales'],['ingDist','Ingresos distintos'],['amarillo','Vence dentro del aviso previo'],['rojo','Vencido']].concat(hayBase()?[]:[['difCtl','Distinto al Excel de control']]).forEach(([k,t])=>{ doc.setFillColor(...(rgb(k)||[255,255,255])); doc.setDrawColor(150); doc.rect(x,20.5,4,3,'FD'); doc.setFontSize(8); doc.text(t,x+5.5,23); x+=doc.getTextWidth(t)+12; });
+    const cs={}; PCOLS.forEach(([k,,w],i)=>{ cs[i]=w?{cellWidth:w}:{cellWidth:'auto'}; if(k==='nombre'||k==='obs') cs[i].halign='left'; });
+    doc.autoTable(Object.assign({},base,{startY:26, styles:Object.assign({},base.styles,{fontSize:7.5}), headStyles:Object.assign({},base.headStyles,{fontSize:7}), head:[PCOLS.map(c=>c[1])], body:F.map(p=>keys.map(k=>valPdf(p,k))), columnStyles:cs,
       didParseCell:d=>{ if(d.section!=='body') return; const p=F[d.row.index], k=keys[d.column.index]; const c=rgb(claveColor(p,k,o)); if(c) d.cell.styles.fillColor=c;
         if(esFalta(p,k)){ d.cell.styles.textColor=[176,0,32]; d.cell.styles.fontStyle='bold'; } }}));
     const textoJust=(lista,y)=>{ doc.setFont('times','normal'); doc.setFontSize(11);
