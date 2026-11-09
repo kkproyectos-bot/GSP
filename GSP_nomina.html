@@ -67,7 +67,7 @@
 <body>
 <header>
   <h1>GSP – Control de personal</h1>
-  <p>Cargá los ZIP (o carpetas) de Habilitaciones y de Personal; la página arma la nómina y la compara con el Excel de control de vencimientos. · <b>Versión 5 (06/11/2026)</b></p>
+  <p>Cargá los ZIP (o carpetas) de Habilitaciones y de Personal; la página arma la nómina y la compara con el Excel de control de vencimientos. · <b>Versión 7 (09/11/2026)</b></p>
 </header>
 <main>
 
@@ -83,7 +83,7 @@
       <select id="baseAnt"><option value="emp">Ingreso a la empresa (recibo)</option><option value="obj">Ingreso al objetivo</option></select></div>
   </div>
   <div class="zona" id="zona">
-    <b>1)</b> Cargá la nómina base (el Excel que descargaste de esta página y validaste). <b>2)</b> Arrastrá acá los ZIP o las carpetas (Habilitaciones y Personal), completos o sólo con los archivos nuevos.<br>
+    <b>1)</b> Cargá la nómina base (el Excel que descargaste de esta página y validaste). Con eso ya se ven la nómina, los indicadores y la cobertura. <b>2)</b> Sólo si hay archivos nuevos: arrastrá acá los ZIP o las carpetas (Habilitaciones y Personal), completos o sólo con lo nuevo.<br>
     <div class="row" style="justify-content:center;margin-top:10px">
       <div><button id="btnBase">Elegir nómina base</button></div>
       <div><button id="btnZip" class="sec">Elegir ZIP</button></div>
@@ -901,17 +901,33 @@ function agruparLineas(items){
 }
 function extraerLista(lineas){
   lineas=lineas.map(s=>String(s).trim()).filter(Boolean);
-  const re=/(?:^|\D)(2[0-7])\s*-?\s*(\d{7,8})\s*-?\s*(\d)(?!\d)\s*(.*)$/;
+  const re=/(?:^|[^\d.,])(2[0-7])(?:\s*-\s*(\d{7,8})\s*-\s*|(\d{8}))(\d)(?![\d.,])/g;
   const lista=[], vistos=new Set();
   for(let i=0;i<lineas.length;i++){
-    const m=lineas[i].match(re); if(!m) continue;
-    let nombre=m[4].replace(/^[\s\-–|]+/,'').trim();
-    if(!/[a-záéíóúñ]{2}/i.test(nombre)){ const sig=(lineas[i+1]||'').trim(); if(/[a-záéíóúñ]{2}/i.test(sig) && !re.test(sig)) nombre=sig; }
-    const cuil=`${m[1]}-${m[2].padStart(8,'0')}-${m[3]}`, dni=String(parseInt(m[2],10));
-    if(vistos.has(cuil)) continue; vistos.add(cuil);
-    lista.push({cuil,dni,nombre:nombre.toUpperCase()});
+    const L=lineas[i], ms=[...L.matchAll(re)];
+    ms.forEach((m,k)=>{
+      // nombre: el texto entre este CUIL y el siguiente del mismo renglón
+      const desde=m.index+m[0].length, hasta=k+1<ms.length?ms[k+1].index:L.length;
+      let nombre=L.slice(desde,hasta).replace(/^[\s\-–|]+/,'').trim();
+      if(!/[a-záéíóúñ]{2}/i.test(nombre)){ const sig=(lineas[i+1]||'').trim(); if(/[a-záéíóúñ]{2}/i.test(sig) && !/(?:^|[^\d.,])(2[0-7])(?:\s*-\s*\d{7,8}\s*-\s*|\d{8})\d(?![\d.,])/.test(sig)) nombre=sig; }
+      const med=m[2]||m[3], cuil=`${m[1]}-${med.padStart(8,'0')}-${m[4]}`, dni=String(parseInt(med,10));
+      nombre=nombre.replace(/\s+\d.*$/,'').trim();   // sólo el nombre, sin fechas ni importes
+      if(vistos.has(cuil)) return; vistos.add(cuil);
+      lista.push({cuil,dni,nombre:nombre.toUpperCase()});
+    });
   }
   return lista;
+}
+// DNI sueltos (sin CUIL): números de 7 u 8 cifras, con o sin puntos
+function dnisSueltos(lineas){ const s=new Set();
+  lineas.forEach(l=>{ for(const m of String(l).matchAll(/(?:^|[^\d.,\/-])(\d{1,2}\.?\d{3}\.?\d{3})(?![\d.,\/])/g)) s.add(soloDni(m[1])); });
+  return s; }
+// ¿Figura el nombre de la persona en algún renglón? (para listados sin CUIL ni DNI, como la póliza de seguro de vida)
+function nombreEnLineas(nombre, lineasPal){
+  const P=palabras(nombre); if(P.length<2) return false;
+  return lineasPal.some(L=>{ if(L.length<2) return false;
+    if(!L.some(w=>palIgual(w,P[0]))) return false;           // el apellido tiene que estar
+    return coincidencias(P,L) >= Math.min(3,P.length,L.length); });
 }
 function detectarTipoCob(lineas){
   const t=sinAcentos(lineas.join(' ').toLowerCase());
@@ -921,16 +937,20 @@ function detectarTipoCob(lineas){
 }
 const TIPOS_COB={art:'ART', sv:'Seguro de vida', otro:'Otro'};
 function cruzarCobertura(filasNomina, docs){
-  const dnis=tipo=>{ const ds=docs.filter(d=>d.tipo===tipo); if(!ds.length) return null;
-    const s=new Set(); ds.forEach(d=>d.lista.forEach(x=>s.add(x.dni))); return s; };
-  const sArt=dnis('art'), sSv=dnis('sv');
-  const filas=filasNomina.map(f=>{ const d=soloDni(f.dni);
-    return {nombre:f.nombre, dni:f.dni, art: sArt?sArt.has(d):null, sv: sSv?sSv.has(d):null}; });
+  const datos=tipo=>{ const ds=docs.filter(d=>d.tipo===tipo); if(!ds.length) return null;
+    const dn=new Set(), lp=[]; ds.forEach(d=>{ d.lista.forEach(x=>dn.add(x.dni)); (d.dnis||[]).forEach(x=>dn.add(x)); (d.lineasPal||[]).forEach(x=>lp.push(x)); });
+    return {dn, lp}; };
+  const A=datos('art'), V=datos('sv'), porNombre={art:[],sv:[]};
+  const buscar=(D,f,campo)=>{ if(!D) return null; const d=soloDni(f.dni);
+    if(d && D.dn.has(d)) return true;
+    if(nombreEnLineas(f.nombre,D.lp)){ porNombre[campo].push(f.nombre); return true; }
+    return false; };
+  const filas=filasNomina.map(f=>({nombre:f.nombre, dni:f.dni, art:buscar(A,f,'art'), sv:buscar(V,f,'sv')}));
   const dnisNom=new Set(filasNomina.map(f=>soloDni(f.dni)));
   const ajenos=tipo=>{ const out=[], v=new Set(); docs.filter(d=>d.tipo===tipo).forEach(d=>d.lista.forEach(x=>{ if(!dnisNom.has(x.dni)&&!v.has(x.dni)){ v.add(x.dni); out.push(x.nombre); } })); return out; };
-  return { filas, total:filas.length, hayArt:!!sArt, haySv:!!sSv,
+  return { filas, total:filas.length, hayArt:!!A, haySv:!!V,
     cArt: filas.filter(f=>f.art).length, cSv: filas.filter(f=>f.sv).length,
-    ajenosArt: ajenos('art'), ajenosSv: ajenos('sv') };
+    ajenosArt: ajenos('art'), ajenosSv: ajenos('sv'), porNombre };
 }
 function redactarCob(cob, o){
   const T=cob.total, P=n=>fmtPct(pct(n,T)), par=[];
@@ -984,7 +1004,7 @@ function filasInforme(){ const f=$('fNom').value; const alc=document.querySelect
 function bg(clave){ const h=hexDe(clave); return h?` style="background:#${h}"`:''; }
 
 function recalcular(){
-  if(!archivos.length && !controlFilas) return;
+  if(!archivos.length && !controlFilas && !base) return;
   ultimo=calcular();
   pintar();
   // Textos para el informe: se vuelven a redactar cuando cambian los datos
@@ -1108,6 +1128,9 @@ const resumenCob=()=>{ const r=[], T=cob.total;
 
 /* ---------- Cobertura ART / seguro de vida ---------- */
 const docsCob=[]; let sigDoc=1, cob=null;
+// Algunos PDF (p. ej. el certificado de Asociart) tienen renglones con una tipografía sin texto real:
+// los números salen como Ȋ..Ȕ (U+020B–U+0214 = 0–9) y el guion como ɮ (U+026E). Se traducen para poder leer el CUIL.
+function decodificarDigitos(l){ return String(l).replace(/[\u020B-\u0214]/g,c=>String.fromCharCode(c.charCodeAt(0)-0x1DB)).replace(/\u026E/g,'-'); }
 async function lineasDeArchivo(file){
   const ext=file.name.toLowerCase().split('.').pop();
   if(ext==='doc') throw new Error('los archivos .doc (Word viejo) no se pueden leer; guardalo como .docx.');
@@ -1116,7 +1139,7 @@ async function lineasDeArchivo(file){
   if(ext==='pdf'){
     const pdf=await pdfjsLib.getDocument({data:new Uint8Array(buf)}).promise; let lineas=[];
     for(let p=1;p<=pdf.numPages;p++){ lineas=lineas.concat(agruparLineas((await (await pdf.getPage(p)).getTextContent()).items)); }
-    return lineas;
+    return lineas.map(decodificarDigitos);
   }
   if(!window.mammoth) throw new Error('no se cargó la librería para leer Word (revisá la conexión a internet).');
   return (await mammoth.extractRawText({arrayBuffer:buf})).value.split('\n');
@@ -1129,7 +1152,7 @@ $('archivoDoc').addEventListener('change', async ev=>{
   for(const file of fs){
     try{ const l=await lineasDeArchivo(file);
       if(!l.some(x=>x.trim())) throw new Error('no tiene texto; puede ser un PDF escaneado.');
-      docsCob.push({id:sigDoc++, nombre:file.name, tipo:detectarTipoCob(l), lista:extraerLista(l)}); }
+      docsCob.push({id:sigDoc++, nombre:file.name, tipo:detectarTipoCob(l), lista:extraerLista(l), dnis:dnisSueltos(l), lineasPal:l.map(x=>palabras(x)).filter(x=>x.length>=2)}); }
     catch(e){ errores.push(`${file.name}: ${e&&e.message?e.message:e}`); }
   }
   pintarDocsCob();
@@ -1141,7 +1164,7 @@ function pintarDocsCob(){
     return `<div class="doc-bloque"><div class="doc-cab"><b>${esc(dd.nombre)}</b>
       <span class="tipo"><label style="margin:0">Tipo</label><select data-tipocob="${dd.id}">${opc}</select>
       <button class="sec mini" data-quitar="${dd.id}">Quitar</button></span></div>
-      <div class="hint" style="margin:0">${dd.lista.length} persona${dd.lista.length===1?'':'s'} en el listado.</div></div>`; }).join('');
+      <div class="hint" style="margin:0">${dd.lista.length?`${dd.lista.length} persona${dd.lista.length===1?'':'s'} con CUIL en el listado; el resto se busca por DNI o por nombre.`:'El listado no trae CUIL: se cruza por DNI o por apellido y nombre.'}</div></div>`; }).join('');
   $('listaDocs').querySelectorAll('button[data-quitar]').forEach(b=>b.onclick=()=>{ const i=docsCob.findIndex(d=>d.id===+b.dataset.quitar); if(i>=0) docsCob.splice(i,1); pintarDocsCob(); });
   $('listaDocs').querySelectorAll('select[data-tipocob]').forEach(s=>s.onchange=()=>{ const d=docsCob.find(x=>x.id===+s.dataset.tipocob); if(d){ d.tipo=s.value; actualizarCobertura(true); } });
   actualizarCobertura(true);
@@ -1169,8 +1192,12 @@ function actualizarCobertura(reescribir){
     : `<div class="kpi"><div class="n">—</div><div class="t">${titulo} · falta cargar el documento</div></div>`;
   $('kpisCob').innerHTML=kpi('Con ART',cob.hayArt,cob.cArt)+kpi('Con seguro de vida',cob.haySv,cob.cSv);
   const av=[];
-  if(cob.ajenosArt.length) av.push(`En la ART figuran personas que no están en la nómina: ${cob.ajenosArt.map(esc).join(', ')}.`);
-  if(cob.ajenosSv.length) av.push(`En el seguro de vida figuran personas que no están en la nómina: ${cob.ajenosSv.map(esc).join(', ')}.`);
+  const ajenosTxt=(l,doc)=> l.length>10 ? `En ${doc} figuran ${l.length} personas que no están en la nómina (probablemente el documento es de toda la empresa).`
+    : `En ${doc} figuran personas que no están en la nómina: ${l.map(esc).join(', ')}.`;
+  if(cob.ajenosArt.length) av.push(ajenosTxt(cob.ajenosArt,'la ART'));
+  if(cob.ajenosSv.length) av.push(ajenosTxt(cob.ajenosSv,'el seguro de vida'));
+  if(cob.porNombre.art.length) av.push(`En la ART se encontraron por nombre (no figura su CUIL ni su DNI): ${cob.porNombre.art.map(esc).join(', ')}. Conviene verificarlos.`);
+  if(cob.porNombre.sv.length) av.push(`En el seguro de vida se encontraron por nombre (no figura su CUIL ni su DNI): ${cob.porNombre.sv.map(esc).join(', ')}. Conviene verificarlos.`);
   const sinDni=ultimo.activos.filter(f=>!f.dni).map(f=>esc(f.nombre));
   if(sinDni.length && (cob.hayArt||cob.haySv)) av.push(`Sin DNI (no se pueden cruzar): ${sinDni.join(', ')}.`);
   $('avisoCob').innerHTML=av.join('<br>'); $('avisoCob').className=av.length?'msg err':'msg';
@@ -1220,7 +1247,7 @@ async function cargarZip(file, nombre){
 $('btnBase').onclick=()=>$('inBase').click();
 $('inBase').onchange=conError(async ev=>{ const f=ev.target.files[0]; ev.target.value=''; if(!f) return;
   leerBase(new Uint8Array(await f.arrayBuffer()), f.name); decisiones.clear(); pilaDeshacer.length=0;
-  if(archivos.length) recalcular(); else { $('msg').className='msg'; $('msg').textContent='Nómina base cargada. Ahora cargá los ZIP o las carpetas.'; } });
+  recalcular(); $('msg').className='msg'; $('msg').textContent=archivos.length?'':'Nómina base cargada. Si hay archivos nuevos, cargá los ZIP o las carpetas; si no, no hace falta.'; });
 $('btnZip').onclick=()=>$('inZip').click();
 $('btnCarpeta').onclick=()=>$('inCarpeta').click();
 $('btnExcel').onclick=()=>$('inExcel').click();
